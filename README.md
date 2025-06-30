@@ -17,4 +17,33 @@ Features:
 ```bash
 python main.py
 ```
+
+## 🛠 Requirements
+
+This project uses a Conda environment. Required packages:
+
+- OpenCV (`cv2`)
+- NumPy
+- Matplotlib
+- Scikit-image
+- SciPy
+- Pandas
+- Pillow
+
+## 📦 Setup Instructions
+
+### 1. Create and Activate Conda Environment
+
+```bash
+conda create -n imglab python=3.10
+conda activate imglab 
+conda install -c conda-forge opencv numpy matplotlib scikit-image scipy pandas pillow
+```
+
+## To Recreate Environment 
+```bash
+Recreate environment using the following command: 
+conda env create -f imglab_environment.yml
+```
+
  
