@@ -1,12 +1,31 @@
+"""
+Pipeline Orchestrator for NanoPSD (Classical mode)
+--------------------------------------------------
+This module coordinates the overall analysis steps:
+  1) Detect scale bar (pixels) and compute nm-per-pixel calibration.
+  2) Preprocess image -> binary mask.
+  3) Segment particles (Classical Otsu via OtsuSegmenter).
+  4) Measure sizes (nm), generate plots, and export summary.
+
+Notes
+-----
+* This version intentionally uses the Classical (Otsu) segmenter only.
+  We wrapped it behind a small interface so AI can be dropped in later
+  with zero changes to measurement/plot/export steps.
+
+* Batch mode is supported: pass a directory instead of a file.
+"""
+
 # Import necessary modules
 import logging
 import os
 from glob import glob
+from typing import Tuple
 
 # Import project-specific modules from their respective paths
 from utils.scale_bar import detect_scale_bar_length  # Detects scale bar in pixels
 from scripts.preprocessing.clahe_filter import preprocess_image  # Enhances image using CLAHE and other filters
-from scripts.segmentation.otsu_segment import segment_particles  # Performs Otsu thresholding for segmentation
+from scripts.segmentation.otsu_impl import OtsuSegmenter  # Classical Otsu-based segmenter for particle segmentation
 from scripts.analysis.size_measurement import measure_particles, export_to_latex  # Measures particle sizes and exports
 from scripts.visualization.plotting import plot_results  # Plots size distribution results
 
@@ -15,73 +34,119 @@ from scripts.visualization.plotting import plot_results  # Plots size distributi
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 class NanoparticleAnalyzer:
-    """
-    A class for analyzing nanoparticle sizes from microscopy images.
-    
-    Parameters:
-    -----------
+    """Run the classical PSD pipeline on one image or a folder of images.
+
+    Parameters
+    ----------
     image_path : str
-        File path to a single image or directory containing multiple images.
+        Path to a single image (e.g., 'SEM.png') OR a directory to process in batch.
     scale_bar_nm : float
-        Real-world length of the scale bar in nanometers (e.g., 100 for 100 nm).
-    batch : bool
-        If True, processes all .png images in a folder; else, processes a single image.
+        Known physical length of the scale bar in nanometers (e.g., 100 for '100 nm').
+    batch : bool, default False
+        If True, process all matching images in `image_path` directory.
+    extensions : Tuple[str, ...], default ('.png', '.tif', '.tiff', '.jpg', '.jpeg')
+        File extensions to consider in batch mode.
+    min_size_px : int, default 3
+        Minimum connected-component size (in pixels) to keep during segmentation.
+    mode : str, default "classical"
+        Segmentation mode selector. Only "classical" is implemented now. 
+    Later:
+        "ai" for AI-only, "both" to run both, "compare" to run both and compare results.
     """
 
-    def __init__(self, image_path, scale_bar_nm, batch=False):
-        self.image_path = image_path          # Path to image or directory
-        self.scale_bar_nm = scale_bar_nm      # Real length of the scale bar in nanometers
-        self.batch_mode = batch               # Whether to process multiple images
+    def __init__(
+        self,
+        image_path: str,
+        scale_bar_nm: float,
+        batch: bool = False,
+        extensions: Tuple[str, ...] = (".png", ".tif", ".tiff", ".jpg", ".jpeg"),
+        min_size_px: int = 3,
+        mode: str = "classical",
+    ) -> None:
+        self.image_path = image_path
+        self.scale_bar_nm = float(scale_bar_nm)
+        self.batch_mode = bool(batch)
+        self.extensions = tuple(extensions)
+        self.min_size_px = int(min_size_px)
+        self.mode = mode # Mode of analysis: 'classical', 'ai', 'both', 'compare'
 
-    def run(self):
-        """
-        Main entry point for the analysis.
-        Determines whether to run in batch mode or single-image mode.
-        """
-        if self.batch_mode:
-            # Collect all .png images in the specified folder
-            images = glob(os.path.join(self.image_path, "*.png"))
+        # Guard: only classical is implemented right now
+        if self.mode != "classical":
+            raise NotImplementedError(
+                f"mode='{self.mode}' not implemented yet; use 'classical' for now"
+        )
+
+        # Classical segmenter wrapped behind an interface
+        self.segmenter = OtsuSegmenter(min_size=self.min_size_px)
+
+
+    # ----------------------------
+    # Public API
+    # ----------------------------
+    def run(self) -> None:
+        """Execute the pipeline on a single file or a folder (batch)."""
+        if self.batch_mode and os.path.isdir(self.image_path):
+            images = list(self._iter_images(self.image_path, self.extensions))
+            if not images:
+                logging.warning(f"No images found in folder: {self.image_path}")
+                return
+            logging.info(f"Batch mode: {len(images)} images found.")
             for img in images:
-                try:
-                    self._process_image(img)
-                except Exception as e:
-                    # Log error if any image fails to process
-                    logging.error(f"Failed to process {img}: {e}")
+                self._process_one(img)
         else:
-            # Process only the single image provided
-            self._process_image(self.image_path)
+            self._process_one(self.image_path)
     
-    def _process_image(self, img_path):
+    # ----------------------------
+    # Internal helpers
+    # ----------------------------
+    def _iter_images(self, folder: str, exts: Tuple[str, ...]):
+        """Yield images in `folder` that match any of the given extensions."""
+        for ext in exts:
+            for p in glob(os.path.join(folder, f"*{ext}")):
+                yield p
+
+    def _process_one(self, img_path: str) -> None:
+        """Run the classical PSD pipeline on a single image path."""
+        try:
+            base = os.path.basename(img_path)
+            logging.info(f"Processing: {base}")
+
+            # --- Step 1: Detect scale bar length in pixels and compute calibration ---
+            scale_bar_px, _ = detect_scale_bar_length(img_path)
+            nm_per_pixel = self._compute_nm_per_pixel(self.scale_bar_nm, scale_bar_px)
+            logging.info(
+                f"Calibration: {nm_per_pixel:.4f} nm/pixel "
+                f"(scale bar: {scale_bar_px} px for {self.scale_bar_nm} nm)"
+            )
+
+            # --- Step 2: Preprocess image -> binary mask ---
+            binary, original = preprocess_image(img_path)
+
+            # --- Step 3: Segment particles (Classical Otsu via interface) ---
+            labeled, regions = self.segmenter.segment(binary)
+            logging.info(f"Segmented {len(regions)} regions (pre-filter).")
+
+            # --- Step 4: Measure diameters in nm and overlay QA drawings (if any) ---
+            diameters_nm, overlay_image, df = measure_particles(
+                regions, labeled, original, nm_per_pixel
+            )
+            logging.info(f"Measured {len(diameters_nm)} particles (post-filter).")
+
+            # --- Step 5: Visualize & Export ---
+            plot_results(diameters_nm, img_path)
+            export_to_latex(diameters_nm, img_path)
+
+            logging.info(f"Completed: {base} | Count={len(diameters_nm)}")
+
+        except Exception as e:
+            logging.exception(f"Error while processing {img_path}: {e}")
+
+    @staticmethod
+    def _compute_nm_per_pixel(scale_bar_nm: float, scale_bar_px: float) -> float:
+        """Return the conversion factor nm/pixel from a known scale bar length.
+
+        Raises a ValueError if the detected pixel length is zero or negative.
         """
-        Process an individual image: calibrate scale, segment particles, measure size, and visualize results.
-
-        Parameters:
-        -----------
-        img_path : str
-            Full file path to the image to be processed.
-        """
-        logging.info(f"Processing: {img_path}")
-
-        # Step 1: Detect scale bar length in pixels from the image
-        scale_bar_px, _ = detect_scale_bar_length(img_path)
-
-        # Step 2: Compute calibration ratio: nanometers per pixel
-        nm_per_pixel = self.scale_bar_nm / scale_bar_px
-        logging.info(f"Calibration: {nm_per_pixel:.2f} nm/pixel")
-
-        # Step 3: Preprocess the image (e.g., contrast enhancement using CLAHE)
-        binary, original = preprocess_image(img_path)
-
-        # Step 4: Segment particles using Otsu's thresholding and return labeled regions
-        labeled_image, regions = segment_particles(binary)
-
-        # Step 5: Measure diameters of segmented particles and convert to nanometers
-        diameters_nm, _, _ = measure_particles(regions, labeled_image, original, nm_per_pixel)
-
-        # Step 6: Visualize results - plot histogram of particle sizes
-        plot_results(diameters_nm, img_path)
-
-        # Step 7: Export measurements to LaTeX-friendly format (e.g., table)
-        export_to_latex(diameters_nm, img_path)
-
-        logging.info(f"Completed: {len(diameters_nm)} particles analyzed")
+        if scale_bar_px <= 0:
+            raise ValueError("Invalid scale bar pixel length (<= 0).")
+        return scale_bar_nm / float(scale_bar_px)
