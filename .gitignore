@@ -1,1 +1,4 @@
 *.png
+/NanoPSD/NanoPSD/outputs/figures/
+/NanoPSD/NanoPSD/outputs/results/
+
