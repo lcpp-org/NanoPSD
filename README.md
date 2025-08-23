@@ -35,7 +35,7 @@ NanoPSD/
 
 ---
 
-## ⚙️ Installation & Setup
+## Installation & Setup
 
 ### 1. Clone the repository
 ```bash
@@ -62,7 +62,7 @@ conda activate imglab
 
 ---
 
-## ▶️ Usage
+## Usage
 
 ### Single Image Analysis
 1. Place your SEM/TEM image in the project folder (or provide a path).  
@@ -81,7 +81,7 @@ python main.py --mode batch --input batch_images/
 
 ---
 
-## 📊 Outputs
+## Outputs
 - **Particle size histogram** (`histogram.png`)  
 - **Tabulated results** (`results.csv` with particle diameters/statistics)  
 - **Visualization plots** (segmented overlays)  
@@ -97,7 +97,7 @@ Particle_ID, Diameter_nm
 
 ---
 
-## 🧩 Example Results
+## Example Results
 *(Insert sample figures here in your repo for best presentation)*  
 
 - **Raw SEM Image**  
@@ -111,7 +111,7 @@ Particle_ID, Diameter_nm
 
 ---
 
-## 🔮 Roadmap
+## Roadmap
 - [ ] Integrate **AI-assisted segmentation**  
 - [ ] Extend support for **TEM images with diffraction patterns**  
 - [ ] Advanced morphology analysis (aspect ratio, circularity, shape factor)  
@@ -119,7 +119,7 @@ Particle_ID, Diameter_nm
 
 ---
 
-## 🤝 Contributing
+## Contributing
 Contributions are welcome! Please fork the repo and submit a pull request.  
 
 Guidelines:  
@@ -129,12 +129,12 @@ Guidelines:
 
 ---
 
-## 📜 License
+## License
 This project is licensed under the **MIT License** – see the [LICENSE](LICENSE) file for details.  
 
 ---
 
-## 👨‍🔬 Citation
+## Citation
 If you use NanoPSD in academic work, please cite:  
 
 *Huq, F. (2025). NanoPSD: Automated Nanoparticle Size Distribution Analysis from Electron Microscopy Images.*  
@@ -159,7 +159,7 @@ Features:
 python main.py
 ```
 
-## 🛠 Requirements
+## Requirements
 
 This project uses a Conda environment. Required packages:
 
@@ -171,7 +171,7 @@ This project uses a Conda environment. Required packages:
 - Pandas
 - Pillow
 
-## 📦 Setup Instructions
+## Setup Instructions
 
 ### 1. Create and Activate Conda Environment
 
