@@ -1,7 +1,7 @@
 # NanoPSD
 **Software Package for Analyzing Plasma-Synthesized Nanoparticle Size Distribution**
 
-NanoPSD is a production-ready Python package designed to extract **particle size distributions (PSD)** from **SEM/TEM images**.  
+NanoPSD is a production-ready Python package designed to extract **particle size distributions (PSD)** of **Nanoparticles (NPs)** from **SEM/TEM images**.  
 It supports both **single-image** and **batch image** analysis, providing a modular and object-oriented pipeline for nanoparticle research and metrology.  
 
 ---
@@ -92,17 +92,16 @@ conda activate imglab
 
 ### Single Image Analysis
 1. Place your SEM/TEM image in the project folder (or provide a path).  
-2. Update the **scale bar length** in `main.py`.  
-3. Run:  
+2. Run:  
 ```bash
-python main.py --mode single --input SEM_Sample_Image.png
+python3 main.py --mode single --input ./single_image.png --scale 200
 ```
 
 ### Batch Image Analysis
 1. Place multiple SEM/TEM images in a folder (e.g., `batch_images/`).  
 2. Run:  
 ```bash
-python main.py --mode batch --input batch_images/
+python3 main.py --mode single --input ./batch_images --scale 200
 ```
 
 ---
