@@ -157,6 +157,7 @@ Guidelines:
 
 ## License
 This project is licensed under the **MIT License** – see the [LICENSE](LICENSE) file for details.  
+- I will update the License after talking with Prof. Davide
 
 ---
 
