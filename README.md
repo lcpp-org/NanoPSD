@@ -16,6 +16,20 @@ It supports both **single-image** and **batch image** analysis, providing a modu
 
 ---
 
+## Dependencies
+NanoPSD requires the following Python libraries:  
+- `opencv-python`  
+- `numpy`  
+- `matplotlib`  
+- `scikit-image`  
+- `scipy`  
+- `pandas`  
+- `Pillow`  
+
+You can install them either via **requirements.txt** or using Conda (see Setup).  
+
+---
+
 ## Project Structure
 ```bash
 NanoPSD/
@@ -159,17 +173,6 @@ Features:
 python main.py
 ```
 
-## Requirements
-
-This project uses a Conda environment. Required packages:
-
-- OpenCV (`cv2`)
-- NumPy
-- Matplotlib
-- Scikit-image
-- SciPy
-- Pandas
-- Pillow
 
 ## Setup Instructions
 
