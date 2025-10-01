@@ -45,21 +45,6 @@ You can install them either via **requirements.txt** or using Conda (see Setup).
 ## Project Structure
 ```bash
 NanoPSD/
-├── main.py                 # Entry point (select single/batch mode)
-├── pipeline/
-│   └── analyzer.py         # Core analysis pipeline
-├── scripts/
-│   ├── preprocessing/      # Preprocessing filters (CLAHE, etc.)
-│   └── segmentation/       # Segmentation algorithms (Otsu, etc.)
-├── batch_images/           # Example batch image folder
-├── SEM_Sample_Image.png    # Example input image
-├── requirements.txt        # Python package dependencies
-├── imglab_environment.yml  # Conda environment file
-├── .gitignore
-└── README.md
-```
-```bash
-NanoPSD/
 ├── README.md                  # Project overview & usage
 ├── requirements.txt           # Python dependencies
 ├── imglab_environment.yml     # Conda environment
