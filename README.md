@@ -45,18 +45,55 @@ You can install them either via **requirements.txt** or using Conda (see Setup).
 ## Project Structure
 ```bash
 NanoPSD/
-├── main.py                 # Entry point (select single/batch mode)
-├── pipeline/
-│   └── analyzer.py         # Core analysis pipeline
-├── scripts/
-│   ├── preprocessing/      # Preprocessing filters (CLAHE, etc.)
-│   └── segmentation/       # Segmentation algorithms (Otsu, etc.)
-├── batch_images/           # Example batch image folder
-├── SEM_Sample_Image.png    # Example input image
-├── requirements.txt        # Python package dependencies
-├── imglab_environment.yml  # Conda environment file
-├── .gitignore
-└── README.md
+├── README.md                  # Project overview & usage
+├── requirements.txt           # Python dependencies
+├── imglab_environment.yml     # Conda environment
+├── main.py                    # Entry point (calls CLI & pipeline)
+├── sample_image_1.png
+├── sample_image_2.png
+├── sample_image_3.png
+├── sample_image_4.tif
+│
+├── pipeline/                  # Orchestrates the full workflow
+│   ├── __init__.py
+│   └── analyzer.py            # NanoparticleAnalyzer class
+│
+├── scripts/                   # Modular processing steps
+│   ├── __init__.py
+│   ├── cli.py                 # Command-line argument parser
+│   │
+│   ├── preprocessing/
+│   │   ├── __init__.py
+│   │   └── clahe_filter.py    # Contrast enhancement (CLAHE)
+│   │
+│   ├── segmentation/
+│   │   ├── __init__.py
+│   │   ├── base.py            # Segmentation base interface
+│   │   ├── otsu_impl.py       # Otsu thresholding implementation
+│   │   └── otsu_segment.py    # Segmentation workflow
+│   │
+│   ├── analysis/
+│   │   └── size_measurement.py # Particle measurement & LaTeX export
+│   │
+│   └── visualization/
+│       └── plotting.py        # Histogram and plot outputs
+│
+├── utils/                     # Helper utilities
+│   ├── __init__.py
+│   ├── ocr.py                 # OCR for scale bar text (EasyOCR/Tesseract)
+│   └── scale_bar.py           # Scale bar detection (hybrid)
+│
+├── notebooks/
+│   └── PSD_Interactive_Analysis.ipynb # Jupyter notebook demo
+│
+└── outputs/                   # Generated results & reports
+    ├── debug/                 # Debug intermediate images
+    ├── figures/               # Plots, overlays
+    ├── preprocessed/          # Preprocessed images
+    ├── results/               # .tex & CSV summaries
+    │   ├── nanoparticle_data.csv
+    │   └── sample_image_*_summary.tex
+    └── report.tex             # Example LaTeX report
 ```
 
 ---

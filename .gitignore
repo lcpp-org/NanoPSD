@@ -64,6 +64,8 @@ data/
 *.npy
 *.mat
 *.tiff
+*.tif
+*.png
 
 # ----------------------------
 # Temporary / Misc

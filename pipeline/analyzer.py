@@ -1,73 +1,109 @@
 """
-Pipeline Orchestrator for NanoPSD (Classical mode)
---------------------------------------------------
-This module coordinates the overall analysis steps:
-  1) Detect scale bar (pixels) and compute nm-per-pixel calibration.
-  2) Preprocess image -> binary mask.
-  3) Segment particles (Classical Otsu via OtsuSegmenter).
-  4) Measure sizes (nm), generate plots, and export summary.
+Pipeline Orchestrator for NanoPSD (Classical Segmentation Mode)
+===============================================================
 
-Notes
------
-* This version intentionally uses the Classical (Otsu) segmenter only.
-  We wrapped it behind a small interface so AI can be dropped in later
-  with zero changes to measurement/plot/export steps.
+This module coordinates the complete nanoparticle size distribution analysis:
+  1. Scale bar detection (geometric + optional OCR)
+  2. Image preprocessing (CLAHE enhancement, thresholding)
+  3. Particle segmentation (Classical Otsu method)
+  4. Size measurement (equivalent diameter in nanometers)
+  5. Visualization & export (histograms, CSV, LaTeX summaries)
 
-* Batch mode is supported: pass a directory instead of a file.
+Architecture Notes:
+-------------------
+- Uses a modular design with clear separation of concerns
+- Segmentation wrapped behind BaseSegmenter interface for easy AI integration later
+- Supports both single-image and batch processing modes
+- Comprehensive error handling with logging
+- All measurements in nanometers (µm automatically converted)
+
+Future Extensions:
+------------------
+- AI-based segmentation (mode="ai")
+- Comparison mode (mode="compare") to evaluate classical vs AI
+- Advanced morphology analysis (circularity, aspect ratio, etc.)
+- Multi-scale analysis for images with multiple magnifications
 """
 
-# Import necessary modules
+# Standard library imports
 import logging
 import os
 from glob import glob
 from typing import Tuple
 
-# Import project-specific modules from their respective paths
+# Local project imports
 from utils.scale_bar import (
-    detect_scale_bar_length,
-    detect_scale_bar,
-    detect_scale_label,  # Hybrid detector + OCR
+    detect_scale_bar_length,      # Legacy wrapper (kept for compatibility)
+    detect_scale_bar,              # Main geometric detector
+    detect_scale_label,            # OCR text reader
 )
-from scripts.preprocessing.clahe_filter import (
-    preprocess_image,
-)  # Enhances image using CLAHE and other filters
-from scripts.segmentation.otsu_impl import (
-    OtsuSegmenter,
-)  # Classical Otsu-based segmenter for particle segmentation
-from scripts.analysis.size_measurement import (
-    measure_particles,
-    export_to_latex,
-)  # Measures particle sizes and exports
-from scripts.visualization.plotting import (
-    plot_results,
-)  # Plots size distribution results
+from scripts.preprocessing.clahe_filter import preprocess_image
+from scripts.segmentation.otsu_impl import OtsuSegmenter
+from scripts.analysis.size_measurement import measure_particles, export_to_latex
+from scripts.visualization.plotting import plot_results
 
-# Set up basic logging configuration
-# This will show timestamps, logging levels, and messages in console
+# Configure logging format
+# Shows timestamp, level (INFO/WARNING/ERROR), and message
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
 
 class NanoparticleAnalyzer:
-    """Run the classical PSD pipeline on one image or a folder of images.
-
-    Parameters
+    """
+    Main pipeline orchestrator for nanoparticle size distribution analysis.
+    
+    This class encapsulates the complete analysis workflow from raw microscopy
+    images to final statistical outputs. It handles both single images and
+    batch processing of multiple images in a folder.
+    
+    Design Pattern:
+    ---------------
+    This is a "Facade" pattern - it provides a simple interface to a complex
+    subsystem. Users only need to instantiate this class and call run().
+    All the complexity of detection, segmentation, measurement is hidden.
+    
+    Attributes
     ----------
     image_path : str
-        Path to a single image (e.g., 'SEM.png') OR a directory to process in batch.
+        Path to single image or folder (depends on batch_mode)
     scale_bar_nm : float
-        Known physical length of the scale bar in nanometers (e.g., 100 for '100 nm').
-    batch : bool, default False
-        If True, process all matching images in `image_path` directory.
-    extensions : Tuple[str, ...], default ('.png', '.tif', '.tiff', '.jpg', '.jpeg')
-        File extensions to consider in batch mode.
-    min_size_px : int, default 3
-        Minimum connected-component size (in pixels) to keep during segmentation.
-    mode : str, default "classical"
-        Segmentation mode selector. Only "classical" is implemented now.
-    Later:
-        "ai" for AI-only, "both" to run both, "compare" to run both and compare results.
+        Physical length of scale bar in nanometers
+        Use -1 to enable OCR auto-detection
+    batch_mode : bool
+        True for batch folder processing, False for single image
+    extensions : tuple of str
+        File extensions to process in batch mode
+    min_size_px : int
+        Minimum particle size in pixels (noise filter)
+    mode : str
+        Segmentation mode: "classical", "ai", "both", "compare"
+        Currently only "classical" is implemented
+    ocr_backend : str
+        OCR engine selection: "auto", "easyocr", or "tesseract"
+    segmenter : BaseSegmenter
+        Segmentation strategy object (currently OtsuSegmenter)
+    
+    Examples
+    --------
+    # Single image with manual scale
+    >>> analyzer = NanoparticleAnalyzer(
+    ...     image_path="sample.tif",
+    ...     scale_bar_nm=200,
+    ...     batch=False,
+    ...     mode="classical"
+    ... )
+    >>> analyzer.run()
+    
+    # Batch processing with OCR
+    >>> analyzer = NanoparticleAnalyzer(
+    ...     image_path="./images/",
+    ...     scale_bar_nm=-1,  # Use OCR
+    ...     batch=True,
+    ...     ocr_backend="easyocr"
+    ... )
+    >>> analyzer.run()
     """
 
     def __init__(
@@ -78,128 +114,391 @@ class NanoparticleAnalyzer:
         extensions: Tuple[str, ...] = (".png", ".tif", ".tiff", ".jpg", ".jpeg"),
         min_size_px: int = 3,
         mode: str = "classical",
-        ocr: str = "auto",
+        ocr_backend: str = "auto",
     ) -> None:
+        """
+        Initialize the analyzer with user parameters.
+        
+        Parameters
+        ----------
+        image_path : str
+            Path to input:
+            - Single mode: path to one image file (e.g., "sample.tif")
+            - Batch mode: path to folder containing images (e.g., "./images/")
+        
+        scale_bar_nm : float
+            Physical length of the scale bar in nanometers
+            - Positive value (e.g., 200.0): use this as known scale
+            - -1: attempt automatic OCR detection of scale bar text
+            - 0: invalid, will cause error
+        
+        batch : bool, optional
+            Processing mode selection (default: False)
+            - False: process single image specified by image_path
+            - True: process all matching images in folder specified by image_path
+        
+        extensions : tuple of str, optional
+            File extensions to process in batch mode (default: common formats)
+            Only used when batch=True
+            Examples: (".png", ".tif"), (".jpg", ".jpeg", ".tiff")
+        
+        min_size_px : int, optional
+            Minimum particle size in pixels (default: 3)
+            Particles smaller than this are filtered out as noise
+            Typical values:
+            - 3-5: high-resolution, clean images
+            - 5-10: noisy or lower-resolution images
+            - 10+: when focusing only on larger particles
+        
+        mode : str, optional
+            Segmentation algorithm selection (default: "classical")
+            Options:
+            - "classical": Otsu thresholding (fast, works for most images)
+            - "ai": Deep learning segmentation (not implemented yet)
+            - "both": Run both and use AI results (not implemented yet)
+            - "compare": Run both and compare (not implemented yet)
+        
+        ocr_backend : str, optional
+            OCR engine for scale bar text reading (default: "auto")
+            Only used when scale_bar_nm=-1
+            Options:
+            - "auto": try EasyOCR first, fall back to Tesseract
+            - "easyocr": use only EasyOCR (most accurate)
+            - "tesseract": use only Tesseract (faster but less accurate)
+        
+        Raises
+        ------
+        NotImplementedError
+            If mode is not "classical" (other modes planned but not ready)
+        """
+        # Store all parameters as instance attributes
         self.image_path = image_path
         self.scale_bar_nm = float(scale_bar_nm)
         self.batch_mode = bool(batch)
         self.extensions = tuple(extensions)
         self.min_size_px = int(min_size_px)
-        self.mode = mode  # Mode of analysis: 'classical', 'ai', 'both', 'compare'
-        self.ocr = ocr  # OCR backend preference: 'auto', 'easyocr', 'tesseract'
-
-        # Guard: only classical is implemented right now
+        self.mode = mode
+        self.ocr_backend = ocr_backend  # Store OCR backend choice
+        
+        # Guard against unimplemented modes
         if self.mode != "classical":
             raise NotImplementedError(
                 f"mode='{self.mode}' not implemented yet; use 'classical' for now"
             )
-
-        # Classical segmenter wrapped behind an interface
+        
+        # Instantiate the segmentation strategy
+        # Using Strategy pattern: segmenter implements BaseSegmenter interface
+        # This makes it easy to swap in AI segmentation later without changing this code
         self.segmenter = OtsuSegmenter(min_size=self.min_size_px)
 
-    # ----------------------------
+    # =========================================================================
     # Public API
-    # ----------------------------
+    # =========================================================================
+
     def run(self) -> None:
-        """Execute the pipeline on a single file or a folder (batch)."""
+        """
+        Execute the analysis pipeline on single image or batch folder.
+        
+        This is the main entry point after initialization. It:
+        1. Determines if batch or single mode
+        2. Finds all images to process
+        3. Calls _process_one() for each image
+        4. Logs progress and any errors
+        
+        Batch Mode Behavior:
+        --------------------
+        - Finds all files matching self.extensions in self.image_path folder
+        - Processes each image independently
+        - Errors in one image don't stop processing of others
+        - Progress logged for each image
+        
+        Single Mode Behavior:
+        ---------------------
+        - Processes the single image at self.image_path
+        - Any error stops execution (appropriate for single file)
+        
+        Returns
+        -------
+        None
+            Results written to outputs/results/ and outputs/figures/
+        
+        Side Effects
+        ------------
+        - Writes CSV files to outputs/results/
+        - Writes PNG/TIF images to outputs/figures/
+        - Writes LaTeX summaries to outputs/results/
+        - Logs progress messages to console
+        """
         if self.batch_mode and os.path.isdir(self.image_path):
+            # Batch mode: find all matching images in folder
             images = list(self._iter_images(self.image_path, self.extensions))
+            
             if not images:
                 logging.warning(f"No images found in folder: {self.image_path}")
                 return
+            
             logging.info(f"Batch mode: {len(images)} images found.")
+            
+            # Process each image (errors caught per-image, don't stop batch)
             for img in images:
                 self._process_one(img)
         else:
+            # Single mode: process one image
             self._process_one(self.image_path)
 
-    # ----------------------------
-    # Internal helpers
-    # ----------------------------
+    # =========================================================================
+    # Internal Helper Methods
+    # =========================================================================
+
     def _iter_images(self, folder: str, exts: Tuple[str, ...]):
-        """Yield images in `folder` that match any of the given extensions."""
+        """
+        Generator that yields image paths in folder matching extensions.
+        
+        This uses glob to find files, which handles wildcards naturally.
+        Using a generator (yield) instead of building a list is more
+        memory-efficient for large batches.
+        
+        Parameters
+        ----------
+        folder : str
+            Path to folder to search
+        exts : tuple of str
+            File extensions to match (e.g., (".png", ".tif"))
+        
+        Yields
+        ------
+        str
+            Full path to each matching image file
+        
+        Examples
+        --------
+        >>> for img in self._iter_images("./data/", (".tif", ".png")):
+        ...     print(img)
+        ./data/sample1.tif
+        ./data/sample2.png
+        """
         for ext in exts:
-            for p in glob(os.path.join(folder, f"*{ext}")):
+            # Glob pattern: folder/*{ext}
+            # Example: ./images/*.tif
+            pattern = os.path.join(folder, f"*{ext}")
+            for p in glob(pattern):
                 yield p
 
     def _process_one(self, img_path: str) -> None:
-        """Run the classical PSD pipeline on a single image path."""
+        """
+        Run the complete analysis pipeline on a single image.
+        
+        This is where the actual work happens. It coordinates all the modules:
+        - utils.scale_bar for scale detection
+        - scripts.preprocessing for image enhancement
+        - scripts.segmentation for particle identification
+        - scripts.analysis for size measurement
+        - scripts.visualization for plotting
+        
+        Pipeline Steps:
+        ---------------
+        1. Detect scale bar (geometric detection + bounding box + mask)
+        2. Determine physical scale:
+           - If user provided --scale N: use N
+           - If user provided --scale -1: attempt OCR
+           - OCR uses the specified backend (auto/easyocr/tesseract)
+        3. Compute nm-per-pixel calibration factor
+        4. Preprocess image (CLAHE + threshold → binary mask)
+        5. Mask out scale bar region (prevent it being counted as particle)
+        6. Segment particles (find connected components)
+        7. Measure particle diameters in nanometers
+        8. Generate plots and export results
+        
+        Parameters
+        ----------
+        img_path : str
+            Path to image file to process
+        
+        Returns
+        -------
+        None
+            Results written to outputs/ directory
+        
+        Raises
+        ------
+        ValueError
+            If scale bar detection fails or no valid scale value found
+        Exception
+            Any other errors during processing (caught and logged)
+        
+        Side Effects
+        ------------
+        - Writes files to outputs/results/ and outputs/figures/
+        - Logs progress messages
+        - Prints OCR success/failure messages
+        """
         try:
             base = os.path.basename(img_path)
             logging.info(f"Processing: {base}")
 
-            # --- NEW: set OCR backend preference from CLI flag ---
-            if getattr(self, "ocr", None):
-                os.environ["NANOPSD_OCR"] = str(self.ocr).lower()
-
-            # --- Step 1: Detect scale bar (px) + bbox/mask; OCR label if scale not provided ---
+            # -----------------------------------------------------------------
+            # Step 1: Detect scale bar (geometric detection)
+            # -----------------------------------------------------------------
+            # Returns:
+            # - scale_bar_px: length of bar in pixels
+            # - bar_bbox: (x, y, w, h) bounding box coordinates
+            # - bar_mask: binary mask (255 inside bar region, 0 elsewhere)
+            # - _: visualization (not used here, saved by detect_scale_bar)
             scale_bar_px, bar_bbox, bar_mask, _ = detect_scale_bar(
-                img_path, save_debug=True, debug_dir="outputs/figures"
+                img_path,
+                save_debug=True,
+                debug_dir="outputs/figures"
             )
 
-            # Prefer CLI-provided scale if positive; otherwise attempt OCR
-            eff_scale_nm = (
-                float(self.scale_bar_nm)
-                if getattr(self, "scale_bar_nm", None) is not None
-                else None
-            )
-            if (eff_scale_nm is None) or (eff_scale_nm <= 0):
+            # -----------------------------------------------------------------
+            # Step 2: Determine effective scale value (manual or OCR)
+            # -----------------------------------------------------------------
+            # Start with user-provided value
+            eff_scale_nm = float(self.scale_bar_nm) if self.scale_bar_nm > 0 else None
+
+            # If scale not provided or is -1, try OCR
+            if eff_scale_nm is None or eff_scale_nm <= 0:
                 try:
+                    # CRITICAL: Pass ocr_backend parameter to enable backend selection
                     ocr_nm = detect_scale_label(
-                        img_path, bar_bbox, save_debug=True, debug_dir="outputs/figures"
+                        img_path,
+                        bar_bbox,
+                        save_debug=True,
+                        debug_dir="outputs/figures",
+                        ocr_backend=self.ocr_backend,  # Pass user's backend choice
                     )
                     if ocr_nm:
                         eff_scale_nm = float(ocr_nm)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.warning(f"OCR error: {e}")
 
-            # Final guard: must have a valid scale in nm at this point
+            # Final validation: must have a valid scale at this point
             if (eff_scale_nm is None) or (eff_scale_nm <= 0):
                 raise ValueError(
                     "No valid scale value found (neither CLI --scale nor OCR)."
                 )
 
+            # -----------------------------------------------------------------
+            # Step 3: Compute calibration factor (nm per pixel)
+            # -----------------------------------------------------------------
             nm_per_pixel = self._compute_nm_per_pixel(eff_scale_nm, scale_bar_px)
             logging.info(
-                f"Calibration: {nm_per_pixel:.4f} nm/pixel (bar: {scale_bar_px} px, value: {eff_scale_nm} nm)"
+                f"Calibration: {nm_per_pixel:.4f} nm/pixel "
+                f"(bar: {scale_bar_px} px, value: {eff_scale_nm} nm)"
             )
 
-            # --- Step 2: Preprocess image -> binary mask ---
+            # -----------------------------------------------------------------
+            # Step 4: Preprocess image to binary mask
+            # -----------------------------------------------------------------
+            # Returns:
+            # - binary: boolean array (True = particle, False = background)
+            # - original: grayscale image (for overlay visualization later)
             binary, original = preprocess_image(img_path)
 
-            # Mask out the scale bar region so it's never counted as a particle
+            # -----------------------------------------------------------------
+            # Step 5: Mask out scale bar region
+            # -----------------------------------------------------------------
+            # The scale bar would otherwise be detected as a huge "particle"
+            # We set all pixels in the bar region to False (background)
             try:
-                if "bar_mask" in locals() and bar_mask is not None:
-                    binary = binary.copy()
-                    binary[bar_mask > 0] = False
+                if bar_mask is not None:
+                    binary = binary.copy()  # Don't modify original
+                    binary[bar_mask > 0] = False  # Zero out bar region
             except Exception:
+                # If masking fails for any reason, continue without it
+                # Better to have a false positive than crash
                 pass
 
-            # --- Step 3: Segment particles (Classical Otsu via interface) ---
+            # -----------------------------------------------------------------
+            # Step 6: Segment particles
+            # -----------------------------------------------------------------
+            # The segmenter (OtsuSegmenter) returns:
+            # - labeled: integer array where each particle has unique ID
+            # - regions: list of regionprops (area, centroid, etc.)
             labeled, regions = self.segmenter.segment(binary)
             logging.info(f"Segmented {len(regions)} regions (pre-filter).")
 
-            # --- Step 4: Measure diameters in nm and overlay QA drawings (if any) ---
+            # -----------------------------------------------------------------
+            # Step 7: Measure particle diameters in nanometers
+            # -----------------------------------------------------------------
+            # Also generates overlay visualizations showing contours
+            # Returns:
+            # - diameters_nm: list of floats (diameter in nm for each particle)
+            # - overlay_image: annotated image with contours
+            # - df: pandas DataFrame with measurements (unused here)
             diameters_nm, overlay_image, df = measure_particles(
-                regions, labeled, original, nm_per_pixel, img_path
+                regions,
+                labeled,
+                original,
+                nm_per_pixel,
+                img_path
             )
             logging.info(f"Measured {len(diameters_nm)} particles (post-filter).")
 
-            # --- Step 5: Visualize & Export ---
+            # -----------------------------------------------------------------
+            # Step 8: Visualize and export results
+            # -----------------------------------------------------------------
+            # plot_results: generates histogram PNG
             plot_results(diameters_nm, img_path)
+            
+            # export_to_latex: generates statistical summary table
             export_to_latex(diameters_nm, img_path)
 
             logging.info(f"Completed: {base} | Count={len(diameters_nm)}")
 
         except Exception as e:
+            # Catch and log any errors during processing
+            # This prevents one bad image from crashing batch mode
             logging.exception(f"Error while processing {img_path}: {e}")
 
     @staticmethod
     def _compute_nm_per_pixel(scale_bar_nm: float, scale_bar_px: float) -> float:
-        """Return the conversion factor nm/pixel from a known scale bar length.
-
-        Raises a ValueError if the detected pixel length is zero or negative.
+        """
+        Compute the calibration factor (nanometers per pixel).
+        
+        This is simple division, but we validate inputs to catch errors early
+        and provide helpful error messages.
+        
+        Formula:
+        --------
+        nm_per_pixel = scale_bar_nm / scale_bar_px
+        
+        Example:
+        --------
+        If scale bar is 200 nm and measures 100 pixels:
+        nm_per_pixel = 200 / 100 = 2.0
+        
+        So each pixel represents 2 nanometers in physical space.
+        
+        Parameters
+        ----------
+        scale_bar_nm : float
+            Physical length of scale bar in nanometers
+        scale_bar_px : float
+            Measured length of scale bar in pixels
+        
+        Returns
+        -------
+        float
+            Conversion factor (nm / pixel)
+        
+        Raises
+        ------
+        ValueError
+            If scale_bar_px is zero or negative (invalid measurement)
+        
+        Examples
+        --------
+        >>> _compute_nm_per_pixel(200, 100)
+        2.0
+        
+        >>> _compute_nm_per_pixel(50, 250)
+        0.2
+        
+        >>> _compute_nm_per_pixel(100, 0)
+        ValueError: Invalid scale bar pixel length (<= 0).
         """
         if scale_bar_px <= 0:
             raise ValueError("Invalid scale bar pixel length (<= 0).")
+        
         return scale_bar_nm / float(scale_bar_px)
