@@ -81,8 +81,7 @@ NanoPSD/
 ├── utils/                     # Helper utilities
 │   ├── __init__.py
 │   ├── ocr.py                 # OCR for scale bar text (EasyOCR/Tesseract)
-│   ├── scale_bar.py           # Scale bar detection (hybrid)
-│   └── scale_barrr.py         # (Alt/experimental scale bar code)
+│   └── scale_bar.py           # Scale bar detection (hybrid)
 │
 ├── notebooks/
 │   └── PSD_Interactive_Analysis.ipynb # Jupyter notebook demo

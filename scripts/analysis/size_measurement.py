@@ -143,45 +143,34 @@ def measure_particles(
     return diameters_nm, diameters_pixels, centroids
 
 
-def export_to_latex(diameters, image_path):
+def export_to_latex(diameters, img_path, out_path="outputs/report.tex"):
     """
-    Generates a LaTeX summary table of particle diameter statistics and writes it to a .tex file.
-
-    Parameters:
-    -----------
-    diameters : list of float
-        Measured particle diameters (in nanometers).
-    image_path : str
-        Path to the original image used for naming the output summary file.
+    Export basic stats to a tiny LaTeX snippet. Safe if diameters is empty.
     """
-
     import os
-    import pandas as pd
-    import numpy as np
     from scipy.stats import describe
 
-    # Extract image name without extension to use in output filename
-    base = os.path.splitext(os.path.basename(image_path))[0]
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    base = os.path.basename(img_path)
 
-    # Compute summary statistics using scipy's describe
-    stats = describe(diameters)
+    with open(out_path, "a") as f:
+        f.write("\n\\section*{%s}\n" % base)
 
-    # Construct a DataFrame with one row of summary statistics
-    summary = pd.DataFrame(
-        [
-            {
-                "Image": base,
-                "Count": stats.nobs,  # Number of particles
-                "Mean": round(stats.mean, 2),  # Mean diameter
-                "Std Dev": round(np.sqrt(stats.variance), 2),  # Standard deviation
-                "Min": round(stats.minmax[0], 2),  # Minimum diameter
-                "Max": round(stats.minmax[1], 2),  # Maximum diameter
-            }
-        ]
-    )
+        if not diameters:
+            # No crash; just record that nothing passed filters
+            f.write("\\textit{No particles detected after filtering.}\n")
+            f.write("\\begin{tabular}{ll}\nCount & 0 \\\\\n\\end{tabular}\n")
+            return
 
-    # Define output .tex file path
-    latex_path = f"outputs/results/{base}_summary.tex"
+        stats = describe(diameters)
+        n = stats.nobs
+        mean = stats.mean
+        var = stats.variance if stats.variance is not None else 0.0
+        mn, mx = stats.minmax
 
-    # Export the summary table as LaTeX (tabular format)
-    summary.to_latex(latex_path, index=False)
+        f.write("\\begin{tabular}{ll}\n")
+        f.write(f"Count & {n} \\\\\n")
+        f.write(f"Mean (nm) & {mean:.2f} \\\\\n")
+        f.write(f"Variance (nm$^2$) & {var:.2f} \\\\\n")
+        f.write(f"Min/Max (nm) & {mn:.2f} / {mx:.2f} \\\\\n")
+        f.write("\\end{tabular}\n")
