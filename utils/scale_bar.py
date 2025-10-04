@@ -285,6 +285,105 @@ def _mask_from_bbox(
 # =============================================================================
 # Main Detection Functions
 # =============================================================================
+# def _detect_text_region(
+#     image: np.ndarray, bar_bbox: Tuple[int, int, int, int]
+# ) -> Optional[Tuple[int, int, int, int]]:
+#     """
+#     Detect text region near the scale bar.
+
+#     Returns bbox (x, y, w, h) of text region, or None if not found.
+#     """
+#     x, y, w, h = bar_bbox
+#     H, W = image.shape[:2]
+
+#     # Search region: area to the right and below the bar
+#     search_x1 = max(0, x - 50)
+#     search_x2 = min(W, x + w + 200)
+#     search_y1 = max(0, y - 30)
+#     search_y2 = min(H, y + h + 50)
+
+#     search_roi = image[search_y1:search_y2, search_x1:search_x2]
+
+#     # Threshold to find text (usually darker than background)
+#     _, binary = cv2.threshold(
+#         search_roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+#     )
+
+#     # Find contours of potential text
+#     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+#     text_boxes = []
+#     for cnt in contours:
+#         tx, ty, tw, th = cv2.boundingRect(cnt)
+#         aspect = tw / max(th, 1)
+
+#         # Text has moderate aspect ratio (not too wide like bar)
+#         if 0.3 < aspect < 5.0 and tw > 5 and th > 5:
+#             # Convert to full image coordinates
+#             full_x = search_x1 + tx
+#             full_y = search_y1 + ty
+#             text_boxes.append((full_x, full_y, tw, th))
+
+#     if text_boxes:
+#         # Merge all text boxes into one region
+#         min_x = min(box[0] for box in text_boxes)
+#         min_y = min(box[1] for box in text_boxes)
+#         max_x = max(box[0] + box[2] for box in text_boxes)
+#         max_y = max(box[1] + box[3] for box in text_boxes)
+
+#         return (min_x, min_y, max_x - min_x, max_y - min_y)
+
+#     return None
+
+
+def _detect_text_near_bar(
+    image: np.ndarray, bar_bbox: Tuple[int, int, int, int]
+) -> Optional[Tuple[int, int, int, int]]:
+    """
+    Detect text region near scale bar.
+
+    Returns:
+        (x, y, w, h) bounding box of text, or None
+    """
+    x, y, w, h = bar_bbox
+    H, W = image.shape[:2]
+
+    # Search region: expand around bar
+    search_x1 = max(0, x - 100)
+    search_x2 = min(W, x + w + 150)
+    search_y1 = max(0, y - 50)
+    search_y2 = min(H, y + h + 50)
+
+    roi = image[search_y1:search_y2, search_x1:search_x2]
+
+    # Threshold to find dark text
+    _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Find contours
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    text_candidates = []
+    for cnt in contours:
+        cx, cy, cw, ch = cv2.boundingRect(cnt)
+        aspect = cw / max(ch, 1)
+
+        # Text has moderate aspect ratio (not long like bar)
+        if 0.2 < aspect < 8.0 and cw > 8 and ch > 8 and cw < w * 2:
+            # Convert to full image coordinates
+            full_x = search_x1 + cx
+            full_y = search_y1 + cy
+            text_candidates.append((full_x, full_y, cw, ch))
+
+    if text_candidates:
+        # Merge all text boxes
+        min_x = min(box[0] for box in text_candidates)
+        min_y = min(box[1] for box in text_candidates)
+        max_x = max(box[0] + box[2] for box in text_candidates)
+        max_y = max(box[1] + box[3] for box in text_candidates)
+
+        return (min_x, min_y, max_x - min_x, max_y - min_y)
+
+    return None
 
 
 def detect_scale_bar(
@@ -457,6 +556,20 @@ def detect_scale_bar(
 
         cv2.imwrite(f"{debug_dir}/scale_candidates.png", roi_vis)
 
+    # Detect text region and expand mask
+    # text_bbox = _detect_text_region(img, bbox_full)
+    # if text_bbox is not None:
+    #     text_mask = _mask_from_bbox(img.shape, text_bbox, pad=5)
+    #     bar_mask = cv2.bitwise_or(bar_mask, text_mask)  # Combine masks
+
+    # Also detect and mask text region
+    text_bbox = _detect_text_near_bar(img, bbox_full)
+    if text_bbox is not None:
+        text_mask = _mask_from_bbox(img.shape, text_bbox, pad=10)
+        # Combine bar mask and text mask
+        bar_mask = cv2.bitwise_or(bar_mask, text_mask)
+        print(f"Excluded text region: {text_bbox}")
+
     return int(width_px), bbox_full, bar_mask, roi_vis
 
 
@@ -466,7 +579,7 @@ def detect_scale_label(
     save_debug: bool = True,
     debug_dir: str = "outputs/figures",
     ocr_backend: str = "auto",  # NEW: Backend selection parameter
-) -> Optional[float]:
+) -> Tuple[Optional[float], Optional[Tuple[int, int, int, int]]]:
     """
     Read scale bar text using OCR and convert to nanometers.
 
@@ -585,16 +698,17 @@ def detect_scale_label(
                 print(
                     f"✓ OCR Success at region {idx} ({rx},{ry}): '{txt}' → {val_nm} nm"
                 )
-                return float(val_nm)
+                text_bbox = (rx, ry, rx2 - rx, ry2 - ry)
+                return float(val_nm), text_bbox
 
     # Fallback to filename parsing
     val = _parse_from_filename(image_path)
     if val:
         print(f"✓ Parsed from filename: {val} nm")
-        return val
+        return val, None
 
     print("✗ OCR failed in all regions and filename has no scale info")
-    return None
+    return None, None
 
 
 def detect_scale_bar_length(image_path: str):

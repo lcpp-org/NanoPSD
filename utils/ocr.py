@@ -30,6 +30,8 @@ import re
 import cv2
 import numpy as np
 from typing import Optional, Tuple
+import gc
+import torch
 
 # =============================================================================
 # Backend Detection and Registry
@@ -52,6 +54,20 @@ try:
     _BACKENDS.append("easyocr")
 except ImportError:
     pass  # EasyOCR not installed, continue without it
+
+
+def clear_gpu_memory():
+    """Clear GPU memory to prevent leaks."""
+    try:
+        import gc
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        gc.collect()
+    except:
+        pass
 
 
 # =============================================================================
@@ -496,24 +512,29 @@ def ocr_read_number(
 
             print("  → Trying EasyOCR...")
 
-            # Initialize EasyOCR reader
-            # Note: First call downloads language models (~40MB), subsequent calls are fast
-            # gpu=False: use CPU (GPU is much faster but requires CUDA setup)
-            # verbose=False: suppress progress messages
-            reader = easyocr.Reader([lang_hint], gpu=False, verbose=False)
+            # Clear GPU memory before starting
+            clear_gpu_memory()
 
-            # Try both polarities: normal and inverted
-            # Some images have black text on white, others white text on black
+            # Try GPU first, fallback to CPU if OOM
+            reader = None
+            try:
+                reader = easyocr.Reader([lang_hint], gpu=True, verbose=False)
+                print("    → Using GPU")
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower():
+                    print("    → GPU OOM, using CPU instead")
+                    clear_gpu_memory()
+                    reader = easyocr.Reader([lang_hint], gpu=False, verbose=False)
+                else:
+                    raise
+
+            # Try both polarities
             for invert in [False, True]:
                 img = image if not invert else (255 - image)
 
-                # Try subset of strategies (EasyOCR is slower, so skip some)
-                # Skip 'denoise' and 'sharpen' as EasyOCR is already robust
                 for strategy in ["basic", "adaptive", "morph"]:
-                    # Apply preprocessing
                     processed = _preprocess_for_ocr(img, strategy)
 
-                    # Save debug image if requested
                     if debug_dir:
                         import os
 
@@ -521,27 +542,24 @@ def ocr_read_number(
                         tag = f"easyocr_inv{int(invert)}_{strategy}"
                         cv2.imwrite(f"{debug_dir}/prep_{tag}.png", processed)
 
-                    # Run EasyOCR
-                    # detail=0: return only text (not bounding boxes or confidence)
                     results = reader.readtext(processed, detail=0)
 
                     if results:
-                        # EasyOCR returns list of text fragments
-                        # Concatenate them with spaces
                         txt = " ".join(results).strip()
 
-                        # Validate: must contain at least one digit
-                        # This filters out pure noise like "|||" or "---"
                         if txt and any(c.isdigit() for c in txt):
                             print(f"    ✓ EasyOCR success: '{txt}'")
+                            clear_gpu_memory()  # Clean up before returning
                             return txt
+
+            # Clean up if no results
+            clear_gpu_memory()
 
         except Exception as e:
             print(f"    ✗ EasyOCR error: {e}")
-            # If user specifically requested EasyOCR, don't fallback
+            clear_gpu_memory()
             if backend == "easyocr":
                 return None
-            # Otherwise continue to Tesseract
 
     # -------------------------------------------------------------------------
     # Step 4: Try Tesseract (if auto or explicitly requested)
