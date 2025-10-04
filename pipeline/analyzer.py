@@ -355,19 +355,29 @@ class NanoparticleAnalyzer:
             # Start with user-provided value
             eff_scale_nm = float(self.scale_bar_nm) if self.scale_bar_nm > 0 else None
 
+            # Initialize text_bbox (will be set by OCR if used)
+            text_bbox = None
+
             # If scale not provided or is -1, try OCR
             if eff_scale_nm is None or eff_scale_nm <= 0:
                 try:
-                    # CRITICAL: Pass ocr_backend parameter to enable backend selection
-                    ocr_nm = detect_scale_label(
+                    ocr_result = detect_scale_label(
                         img_path,
                         bar_bbox,
                         save_debug=True,
                         debug_dir="outputs/figures",
-                        ocr_backend=self.ocr_backend,  # Pass user's backend choice
+                        ocr_backend=self.ocr_backend,
                     )
-                    if ocr_nm:
-                        eff_scale_nm = float(ocr_nm)
+                    if ocr_result:
+                        if isinstance(ocr_result, tuple):
+                            ocr_nm, text_bbox = ocr_result
+                        else:
+                            ocr_nm = ocr_result
+
+                        if ocr_nm:
+                            eff_scale_nm = float(ocr_nm)
+                            if text_bbox:
+                                logging.info(f"OCR found text at: {text_bbox}")
                 except Exception as e:
                     logging.warning(f"OCR error: {e}")
 
@@ -407,14 +417,44 @@ class NanoparticleAnalyzer:
             # -----------------------------------------------------------------
             # The scale bar would otherwise be detected as a huge "particle"
             # We set all pixels in the bar region to False (background)
-            try:
-                if bar_mask is not None:
-                    binary = binary.copy()  # Don't modify original
-                    binary[bar_mask > 0] = False  # Zero out bar region
-            except Exception:
-                # If masking fails for any reason, continue without it
-                # Better to have a false positive than crash
-                pass
+            if bar_mask is not None:
+                logging.info("Excluding scale bar region from particle detection...")
+                binary = binary.copy()
+                binary[bar_mask > 0] = False
+
+                # Tier 1: Use OCR-detected text location (most precise)
+                if text_bbox is not None:
+                    tx, ty, tw, th = text_bbox
+                    pad = 15
+                    ty1 = max(0, ty - pad)
+                    ty2 = min(binary.shape[0], ty + th + pad)
+                    tx1 = max(0, tx - pad)
+                    tx2 = min(binary.shape[1], tx + tw + pad)
+
+                    binary[ty1:ty2, tx1:tx2] = False
+                    logging.info(f"Excluded OCR text at ({tx},{ty},{tw},{th})")
+
+                # Tier 2: Geometric exclusion around bar (for manual scale mode)
+                else:
+                    logging.info("Using geometric text exclusion around scale bar")
+                    bx, by, bw, bh = bar_bbox
+
+                    pad_x = 200
+                    pad_y = 50
+
+                    tx1 = max(0, bx - pad_x)
+                    ty1 = max(0, by - pad_y)
+                    tx2 = min(binary.shape[1], bx + bw + pad_x)
+                    ty2 = min(binary.shape[0], by + bh + pad_y)
+
+                    binary[ty1:ty2, tx1:tx2] = False
+                    logging.info(f"Excluded area: ({tx1},{ty1}) to ({tx2},{ty2})")
+
+            # Tier 3: Fallback if no bar detected at all
+            else:
+                logging.warning("No scale bar detected - excluding bottom 15%")
+                h, w = binary.shape
+                binary[int(h * 0.85) :, :] = False
 
             # -----------------------------------------------------------------
             # Step 6: Segment particles
@@ -423,7 +463,7 @@ class NanoparticleAnalyzer:
             # - labeled: integer array where each particle has unique ID
             # - regions: list of regionprops (area, centroid, etc.)
             labeled, regions = self.segmenter.segment(binary)
-            logging.info(f"Segmented {len(regions)} regions (pre-filter).")
+            logging.info(f"Segmented {len(regions)} regions after exclusion.")
 
             # -----------------------------------------------------------------
             # Step 7: Measure particle diameters in nanometers

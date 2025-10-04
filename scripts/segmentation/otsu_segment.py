@@ -1,10 +1,17 @@
-from skimage import measure, morphology  # Import particle measurement and morphological tools from scikit-image
+from skimage import (
+    measure,
+    morphology,
+)  # Import particle measurement and morphological tools from scikit-image
 from scipy import ndimage  # Import functions for binary image manipulation from SciPy
+
 
 def segment_particles(binary_image, min_size=3):
     """
     Segments particles in a binary image using connected component analysis,
     removes small noise objects, fills internal holes, and returns labeled regions.
+
+    NOTE: Scale bar exclusion should be done BEFORE calling this function
+    by masking the binary_image (setting excluded pixels to False).
 
     Parameters:
     -----------
@@ -21,7 +28,7 @@ def segment_particles(binary_image, min_size=3):
     regions : list of skimage.measure._regionprops.RegionProperties
         A list of region properties for each labeled particle, which can be used for size, shape, etc.
     """
-    
+
     # Step 1: Remove small objects from the binary image
     # This is a morphological operation to eliminate noise and tiny specks
     # Any connected group of True pixels smaller than min_size is removed
@@ -44,4 +51,3 @@ def segment_particles(binary_image, min_size=3):
 
     # Step 5: Return the labeled image and list of particle properties
     return labeled, regions
-
