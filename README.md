@@ -109,10 +109,16 @@ NanoPSD/
 │
 └── outputs/                   # Generated results & reports
     ├── debug/                 # Debug intermediate images
-    ├── figures/               # Plots, overlays
+    ├── figures/               # Plots, overlays, batch comparisons
+    │   ├── histogram.png
+    │   ├── batch_histogram_comparison.png
+    │   ├── batch_morphology_comparison.png
+    │   └── batch_summary_table.png
     ├── preprocessed/          # Preprocessed images
     ├── results/               # .tex & CSV summaries
     │   ├── nanoparticle_data.csv
+    │   ├── batch_all_particles.csv      # Combined batch data
+    │   ├── batch_summary.csv            # Per-image statistics
     │   └── sample_image_*_summary.tex
     └── report.tex             # Example LaTeX report
 ```
@@ -218,8 +224,9 @@ python main.py --mode single --input sample_image_1.png --algo classical --min-s
 
 ### Batch Image Analysis
 
-Process multiple images in a folder:
+Process multiple images in a folder and generate both **individual outputs** for each image and **aggregate comparisons** across all images.
 
+**Basic batch processing:**
 ```bash
 # With manual scale (all images must have same scale)
 python main.py --mode batch --input ./batch_images --algo classical --min-size 3 --scale-bar-nm 200
@@ -227,7 +234,6 @@ python main.py --mode batch --input ./batch_images --algo classical --min-size 3
 # With automatic scale detection (each image detected separately)
 python main.py --mode batch --input ./batch_images --algo classical --min-size 3 --scale-bar-nm -1 --ocr-backend tesseract
 ```
-
 ---
 
 ### OCR Backend Options
@@ -328,6 +334,19 @@ Morphology analysis generates additional outputs:
 4. `nanoparticle_data.csv` - Includes morphology classification and shape metrics
 
 ### Example Console Output
+
+## Batch Mode Outputs
+
+When processing multiple images in batch mode, NanoPSD generates comprehensive comparison reports.
+
+### Combined Particle Data
+**File:** `outputs/results/batch_all_particles.csv`
+
+All particles from all images with source tracking:
+```csv
+Image,Particle_ID,Diameter_nm,Morphology,Aspect_Ratio,Circularity,Solidity,Extent
+sample_1.png,1,42.5,Spherical,1.2,0.85,0.92,0.78
+sample_2.png,1,56.2,Rod-like,2.3,0.65,0.87,0.71
 
 ## Troubleshooting
 
