@@ -181,6 +181,9 @@ class NanoparticleAnalyzer:
         self.ocr_backend = ocr_backend  # Store OCR backend choice
         self.verify_scale_bar = verify_scale_bar  # Store scale bar verification flag
 
+        # Store results for batch aggregation
+        self.batch_results = []  # Will hold DataFrames from each image
+
         # Guard against unimplemented modes
         if self.mode != "classical":
             raise NotImplementedError(
@@ -243,6 +246,12 @@ class NanoparticleAnalyzer:
             # Process each image (errors caught per-image, don't stop batch)
             for img in images:
                 self._process_one(img)
+
+            # Generate batch aggregation outputs
+            if self.batch_results:
+                self._generate_batch_report()
+            else:
+                logging.warning("No results to aggregate in batch mode")
         else:
             # Single mode: process one image
             self._process_one(self.image_path)
@@ -509,10 +518,81 @@ class NanoparticleAnalyzer:
 
             logging.info(f"Completed: {base} | Count={len(diameters_nm)}")
 
+            # Store results for batch aggregation
+            if self.batch_mode and len(df) > 0:
+                df_copy = df.copy()
+                df_copy["Image"] = base  # Add source image column
+                self.batch_results.append(df_copy)
+
         except Exception as e:
             # Catch and log any errors during processing
             # This prevents one bad image from crashing batch mode
             logging.exception(f"Error while processing {img_path}: {e}")
+
+    def _generate_batch_report(self) -> None:
+        """
+        Generate aggregate outputs for batch processing.
+
+        Creates:
+        - Combined CSV with all particles
+        - Summary statistics table
+        - Comparison visualizations
+        """
+        import pandas as pd
+        from scripts.visualization.plotting import plot_batch_comparison
+
+        logging.info(f"\n{'='*60}")
+        logging.info("GENERATING BATCH REPORT")
+        logging.info(f"{'='*60}")
+
+        # Combine all dataframes
+        df_all = pd.concat(self.batch_results, ignore_index=True)
+
+        # Save combined CSV
+        combined_csv = "outputs/results/batch_all_particles.csv"
+        df_all.to_csv(combined_csv, index=False)
+        logging.info(f"Saved combined CSV: {combined_csv}")
+
+        # Generate summary statistics per image
+        summary_data = []
+        for img_name in df_all["Image"].unique():
+            img_df = df_all[df_all["Image"] == img_name]
+
+            summary_data.append(
+                {
+                    "Image": img_name,
+                    "Total_Particles": len(img_df),
+                    "Mean_Diameter_nm": img_df["Diameter (nm)"].mean(),
+                    "Std_Diameter_nm": img_df["Diameter (nm)"].std(),
+                    "Min_Diameter_nm": img_df["Diameter (nm)"].min(),
+                    "Max_Diameter_nm": img_df["Diameter (nm)"].max(),
+                    "Spherical_Count": len(img_df[img_df["Morphology"] == "spherical"]),
+                    "RodLike_Count": len(img_df[img_df["Morphology"] == "rod-like"]),
+                    "Aggregate_Count": len(img_df[img_df["Morphology"] == "aggregate"]),
+                }
+            )
+
+        df_summary = pd.DataFrame(summary_data)
+        summary_csv = "outputs/results/batch_summary.csv"
+        df_summary.to_csv(summary_csv, index=False)
+        logging.info(f"Saved summary statistics: {summary_csv}")
+
+        # Print summary table
+        print(f"\n{'='*80}")
+        print("BATCH SUMMARY STATISTICS")
+        print(f"{'='*80}")
+        print(df_summary.to_string(index=False))
+        print(f"{'='*80}")
+        print(f"Total Images Processed: {len(df_summary)}")
+        print(f"Total Particles Detected: {len(df_all)}")
+        print(f"Overall Mean Diameter: {df_all['Diameter (nm)'].mean():.2f} nm")
+        print(f"Overall Std Deviation: {df_all['Diameter (nm)'].std():.2f} nm")
+        print(f"{'='*80}\n")
+
+        # Generate comparison plots
+        plot_batch_comparison(df_all, df_summary)
+
+        logging.info("Batch report generation complete")
 
     def _show_verification(self, img_path, bar_bbox, scale_bar_px, ocr_value):
         """Show scale bar crop and wait for Y/N."""
