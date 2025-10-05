@@ -207,7 +207,7 @@ python main.py --mode single --input sample_image_1.tif --algo classical --min-s
 python main.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --scale-bar-nm -1 --ocr-backend tesseract --verify-scale-bar
 ```
 
-**⚠️ Important Notes on Automatic Detection:**
+**Important Notes on Automatic Detection:**
 - Works best with **dark scale bars on light backgrounds**
 - **White or light-colored scale bars often fail** - use manual calculation instead
 - EasyOCR on CPU is extremely slow (hours) - use Tesseract or manual calculation
