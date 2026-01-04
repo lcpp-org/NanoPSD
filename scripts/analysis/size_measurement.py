@@ -44,13 +44,6 @@ def measure_particles(
     # Reload original image
     img_for_overlay = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
-    # Normalize to full 0-255 range
-    img_for_overlay = cv2.normalize(img_for_overlay, None, 0, 255, cv2.NORM_MINMAX)
-
-    # Apply strong CLAHE for visibility
-    clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(8, 8))
-    img_for_overlay = clahe.apply(img_for_overlay)
-
     # Convert to BGR
     img_for_overlay = cv2.cvtColor(img_for_overlay, cv2.COLOR_GRAY2BGR)
 
