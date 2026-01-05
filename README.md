@@ -126,7 +126,7 @@ NanoPSD/
     │   ├── nanoparticle_data.csv
     │   ├── batch_all_particles.csv      # Combined batch data
     │   ├── batch_summary.csv            # Per-image statistics
-    │   └── sample_image_*_summary.tex
+    │   └── sample_image_\*_summary.tex
     └── report.tex             # Example LaTeX report
 ```
 
@@ -135,9 +135,9 @@ NanoPSD/
 ## Project Architecture
 ```bash
 NanoPSD/
-├── nanopsd.py              # 🚪 Main entry point (start here!)
-├── analyzer.py             # 🧠 Core pipeline orchestrator
-├── cli.py                  # ⚙️ Command-line argument parser
+├── nanopsd.py              # Main entry point (start here!)
+├── analyzer.py             # Core pipeline orchestrator
+├── cli.py                  # Command-line argument parser
 │
 ├── Preprocessing:
 │   └── clahe_filter.py     # Contrast enhancement + thresholding
@@ -151,7 +151,7 @@ NanoPSD/
 │   ├── otsu_impl.py        # Otsu implementation
 │   └── otsu_segment.py     # Classical segmentation
 │
-├── Measurement & Analysis:
+├── Measurement \& Analysis:
 │   ├── size_measurement.py # Particle measurement + morphology
 │   └── plotting.py         # Histograms + visualizations
 │
