@@ -415,8 +415,8 @@ Morphology analysis generates additional outputs:
 4. `nanoparticle_data.csv` - Includes morphology classification and shape metrics
 
 ### Example Console Output
-(To be added)
 Input Command:
+
 `python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --scale-bar-nm 200`
 
 Console Output:
