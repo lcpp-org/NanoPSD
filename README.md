@@ -416,6 +416,38 @@ Morphology analysis generates additional outputs:
 
 ### Example Console Output
 (To be added)
+Input Command:
+`python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --scale-bar-nm 200`
+
+Console Output:
+```bash
+2026-01-03 22:59:23,582 [INFO] Processing: sample_image_1.tif
+2026-01-03 22:59:23,582 [INFO] 📏 Scale bar detection mode
+Excluded text region: (820, 2017, 145, 21)
+2026-01-03 22:59:24,102 [INFO] Calibration: 0.6289 nm/pixel (bar: 318 px, value: 200.0 nm)
+2026-01-03 22:59:24,154 [INFO] Excluding scale bar region from particle detection...
+2026-01-03 22:59:24,157 [INFO] Using geometric text exclusion around scale bar
+2026-01-03 22:59:24,157 [INFO] Excluded area: (564,2017) to (1282,2115)
+2026-01-03 22:59:24,695 [INFO] Segmented 824 regions after exclusion.
+Saved all contour types:
+ - outputs/figures/sample_image_1_true_contours.tif
+ - outputs/figures/sample_image_1_circular_equivalent.tif
+ - outputs/figures/sample_image_1_elliptical_equivalent.tif
+ - outputs/figures/sample_image_1_all_contour_types.tif
+Morphology distribution: {'aggregate': 327, 'spherical': 37, 'rod-like': 13}
+ - outputs/figures/sample_image_1_morphology_overlay.tif
+2026-01-03 22:59:33,443 [INFO] Measured 377 particles (post-filter).
+Saved: outputs/figures/sample_image_1_diameter_histogram.png
+
+============================================================
+MORPHOLOGY SUMMARY
+============================================================
+Spherical   :   37 (  9.8%)  Avg:   7.88 nm
+Rod-like    :   13 (  3.4%)  Avg:   9.63 nm
+Aggregate   :  327 ( 86.7%)  Avg:  13.61 nm
+============================================================
+2026-01-03 22:59:34,805 [INFO] Completed: sample_image_1.tif | Count=377
+```
 
 ## Batch Mode Outputs
 
