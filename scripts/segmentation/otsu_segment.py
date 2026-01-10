@@ -3,9 +3,19 @@ from skimage import (
     morphology,
 )  # Import particle measurement and morphological tools from scikit-image
 from scipy import ndimage  # Import functions for binary image manipulation from SciPy
+import numpy as np
+import cv2
+import os
 
 
-def segment_particles(binary_image, min_size=3, max_size=None):
+def segment_particles(
+    binary_image,
+    min_size=3,
+    max_size=None,
+    save_steps=False,
+    output_dir="outputs/segmentation_steps",
+    image_name="image",
+):
     """
     Segments particles in a binary image using connected component analysis,
     removes small and large noise objects, fills internal holes, and returns labeled regions.
@@ -32,12 +42,21 @@ def segment_particles(binary_image, min_size=3, max_size=None):
         A list of region properties for each labeled particle, which can be used for size, shape, etc.
     """
 
-    import numpy as np
+    # Setup for saving intermediate steps
+    if save_steps:
+        os.makedirs(output_dir, exist_ok=True)
 
     # Step 1: Remove small objects from the binary image
     # This is a morphological operation to eliminate noise and tiny specks
     # Any connected group of True pixels smaller than min_size is removed
     cleaned = morphology.remove_small_objects(binary_image, min_size=min_size)
+
+    if save_steps:
+        cleaned_vis = (cleaned * 255).astype(np.uint8)
+        cv2.imwrite(
+            f"{output_dir}/{image_name}_step2_after_small_removal.png", cleaned_vis
+        )
+        print(f"Saved: {output_dir}/{image_name}_step2_after_small_removal.png")
 
     # Step 1.5: Remove large objects if max_size is specified
     if max_size is not None:
@@ -53,16 +72,53 @@ def segment_particles(binary_image, min_size=3, max_size=None):
 
         cleaned = cleaned & mask
 
+    if save_steps:
+        cleaned_vis = (cleaned * 255).astype(np.uint8)
+        cv2.imwrite(
+            f"{output_dir}/{image_name}_step3_after_large_removal.png", cleaned_vis
+        )
+        print(f"Saved: {output_dir}/{image_name}_step3_after_large_removal.png")
+
     # Step 2: Fill internal holes within objects (particles)
     # Ensures that ring-shaped particles or porous features are treated as solid
     # For example, a particle shaped like a donut will be filled in
     filled = ndimage.binary_fill_holes(cleaned)
+
+    if save_steps:
+        filled_vis = (filled * 255).astype(np.uint8)
+        cv2.imwrite(
+            f"{output_dir}/{image_name}_step4_after_hole_filling.png", filled_vis
+        )
+        print(f"Saved: {output_dir}/{image_name}_step4_after_hole_filling.png")
 
     # Step 3: Label connected components in the binary image
     # Each group of connected True pixels gets a unique label: 1, 2, 3, ..., N
     # Background pixels (False) are labeled as 0
     # '_' represents `num_particles` counts the number of detected objects
     labeled, _ = ndimage.label(filled)
+
+    if save_steps:
+        # Create colorized visualization of labeled components
+        # Normalize labels to 0-255 range for visualization
+        if labeled.max() > 0:
+            labeled_vis = ((labeled / labeled.max()) * 255).astype(np.uint8)
+            # Apply colormap for better visualization
+            labeled_color = cv2.applyColorMap(labeled_vis, cv2.COLORMAP_JET)
+            # Set background (label 0) to black
+            labeled_color[labeled == 0] = [0, 0, 0]
+            cv2.imwrite(
+                f"{output_dir}/{image_name}_step5_labeled_components.png", labeled_color
+            )
+            print(f"Saved: {output_dir}/{image_name}_step5_labeled_components.png")
+        else:
+            # No particles detected - save blank image
+            blank = np.zeros((*labeled.shape, 3), dtype=np.uint8)
+            cv2.imwrite(
+                f"{output_dir}/{image_name}_step5_labeled_components.png", blank
+            )
+            print(
+                f"Saved: {output_dir}/{image_name}_step5_labeled_components.png (no particles)"
+            )
 
     # Step 4: Compute region properties of the labeled image
     # This returns measurements like area, centroid, bounding box, etc., for each particle

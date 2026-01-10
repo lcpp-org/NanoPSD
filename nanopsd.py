@@ -235,6 +235,8 @@ def main() -> None:
         # OCR configuration
         ocr_backend=args.ocr_backend,  # "auto", "easyocr", or "tesseract"
         verify_scale_bar=args.verify_scale_bar,  # Enable manual verification of scale detection
+        save_preprocessing_steps=args.save_preprocessing_steps,
+        save_segmentation_steps=args.save_segmentation_steps,
     )
 
     # -------------------------------------------------------------------------

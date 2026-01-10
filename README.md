@@ -11,7 +11,8 @@ It supports both **single-image** and **batch image** analysis, providing a modu
 - **Manual calibration mode** for images without scale bars (direct nm/pixel input)
 - **Particle segmentation** using classical methods (Otsu thresholding, preprocessing filters)
 - **Size extraction & visualization** (histograms, plots, CSV export)
-- **Flexible particle filtering** with `--min-size` and `--max-size` (removes noise and false detections)  ← ADD THIS
+- **Flexible particle filtering** with `--min-size` and `--max-size` (removes noise and false detections)
+- **Pipeline visualization** for papers and presentations (`--save-preprocessing-steps`, `--save-segmentation-steps`)
 - **Classification of nanoparticles** based on **morphology**
 - Works with both **single images** and **batch folders**
 - Modular, **object-oriented codebase** for easy extension
@@ -129,6 +130,19 @@ NanoPSD/
     │   ├── batch_morphology_comparison.png
     │   └── batch_summary_table.png
     ├── preprocessed/          # Preprocessed images
+    ├── preprocessing_steps/   # Step-by-step preprocessing (--save-preprocessing-steps)
+    │   ├── *_step1_original.png
+    │   ├── *_step2_normalized.png
+    │   ├── *_step3_clahe.png
+    │   ├── *_step4_gaussian_blur.png
+    │   ├── *_step5_otsu_threshold.png
+    │   └── *_step6_inverted.png
+    ├── segmentation_steps/    # Step-by-step segmentation (--save-segmentation-steps)
+    │   ├── *_step1_input_binary.png
+    │   ├── *_step2_after_small_removal.png
+    │   ├── *_step3_after_large_removal.png
+    │   ├── *_step4_after_hole_filling.png
+    │   └── *_step5_labeled_components.png
     ├── results/               # .tex & CSV summaries
     │   ├── nanoparticle_data.csv
     │   ├── batch_all_particles.csv      # Combined batch data
@@ -266,6 +280,68 @@ Both parameters are **in pixels**, making them **scale-independent**:
 
 ---
 
+---
+
+## Pipeline Visualization for Papers & Presentations
+
+NanoPSD can generate step-by-step visualization of the processing pipeline, ideal for:
+- 📄 **Scientific papers** - Show methodology in Methods section
+- 📊 **Presentations** - Explain algorithm to audiences
+- 🐛 **Debugging** - Understand why segmentation succeeded/failed
+- 🎓 **Teaching** - Educational demonstrations
+
+### Preprocessing Steps Visualization
+
+Saves 6 intermediate images showing the preprocessing pipeline:
+```bash
+python3 nanopsd.py --mode single --input image.tif \
+                   --scale-bar-nm 200 --min-size 3 \
+                   --save-preprocessing-steps
+```
+
+**Output:** `outputs/preprocessing_steps/`
+1. `*_step1_original.png` - Original grayscale image
+2. `*_step2_normalized.png` - Intensity normalization (0-255)
+3. `*_step3_clahe.png` - CLAHE contrast enhancement
+4. `*_step4_gaussian_blur.png` - Gaussian noise reduction
+5. `*_step5_otsu_threshold.png` - Otsu global thresholding
+6. `*_step6_inverted.png` - Final binary mask
+
+### Segmentation Steps Visualization
+
+Saves 5 intermediate images showing the segmentation pipeline:
+```bash
+python3 nanopsd.py --mode single --input image.tif \
+                   --scale-bar-nm 200 --min-size 5 --max-size 100 \
+                   --save-segmentation-steps
+```
+
+**Output:** `outputs/segmentation_steps/`
+1. `*_step1_input_binary.png` - Input binary mask (from preprocessing)
+2. `*_step2_after_small_removal.png` - After min-size filtering
+3. `*_step3_after_large_removal.png` - After max-size filtering (if used)
+4. `*_step4_after_hole_filling.png` - After morphological hole filling
+5. `*_step5_labeled_components.png` - Color-coded particle labels
+
+### Combined Visualization
+
+Generate both preprocessing and segmentation steps:
+```bash
+python3 nanopsd.py --mode single --input image.tif \
+                   --scale-bar-nm 200 --min-size 5 \
+                   --save-preprocessing-steps \
+                   --save-segmentation-steps
+```
+
+**Use Case Example:**
+```markdown
+Figure 2 in your paper: "Image preprocessing pipeline showing progressive
+refinement from raw SEM image to binary mask. Generated using NanoPSD v1.0
+with --save-preprocessing-steps flag."
+```
+
+---
+
 ## Usage
 
 ### Determining the Scale Bar Size Parameter
@@ -281,10 +357,13 @@ Both parameters are **in pixels**, making them **scale-independent**:
 **Example:**
 ```bash
 # Basic usage
-python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --scale-bar-nm 200
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --scale-bar-nm 200
 
-# With maximum size filter (remove large false detections)
+# With minimum and maximum size filter (remove small and large false detections)
 python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --max-size 100 --scale-bar-nm 200
+
+# Generate step-by-step images for methodology visualization
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --max-size 100 --scale-bar-nm 200 --save-preprocessing-steps --save-segmentation-steps
 ```
 
 #### Method 2: Automatic Detection (Requires OCR)
@@ -293,19 +372,22 @@ Use `--ocr-backend` flag to enable automatic scale bar detection:
 
 ```bash
 # CPU-friendly (Tesseract)
-python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --ocr-backend tesseract
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --ocr-backend tesseract
 
 # GPU-accelerated (EasyOCR - requires CUDA)
-python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --ocr-backend easyocr
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --ocr-backend easyocr
 
 # Auto selection (Trying EasyOCR First and then Tesseract)
-python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --ocr-backend auto
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --ocr-backend auto
 
-# With maximum size filter
+# With minimum and maximum size filter
 python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 5 --max-size 150 --ocr-backend tesseract
 
 # With verification prompt
 python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --ocr-backend tesseract --verify-scale-bar
+
+# With step-by-step images for methodology visualization
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical --min-size 3 --max-size 100 --scale-bar-nm 200 --save-preprocessing-steps --save-segmentation-steps
 ```
 
 **Important Notes on Automatic Detection:**

@@ -9,7 +9,14 @@ from .otsu_segment import segment_particles
 
 
 class OtsuSegmenter(BaseSegmenter):
-    def __init__(self, min_size=3, max_size=None):
+    def __init__(
+        self,
+        min_size=3,
+        max_size=None,
+        save_steps=False,
+        output_dir="outputs/segmentation_steps",
+        image_name="image",
+    ):
         """
         Parameters
         ----------
@@ -22,6 +29,9 @@ class OtsuSegmenter(BaseSegmenter):
         """
         self.min_size = min_size
         self.max_size = max_size
+        self.save_steps = save_steps
+        self.output_dir = output_dir
+        self.image_name = image_name
 
     def segment(self, binary_image):
         """
@@ -40,5 +50,10 @@ class OtsuSegmenter(BaseSegmenter):
             Region properties for each segmented object.
         """
         return segment_particles(
-            binary_image, min_size=self.min_size, max_size=self.max_size
+            binary_image,
+            min_size=self.min_size,
+            max_size=self.max_size,
+            save_steps=self.save_steps,
+            output_dir=self.output_dir,
+            image_name=self.image_name,
         )
