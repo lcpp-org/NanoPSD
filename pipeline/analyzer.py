@@ -117,6 +117,8 @@ class NanoparticleAnalyzer:
         ocr_backend: str = "auto",
         verify_scale_bar: bool = False,
         nm_per_pixel: float = None,  # Adding capability to directly input nm_per_pixel
+        save_preprocessing_steps: bool = False,
+        save_segmentation_steps: bool = False,
     ) -> None:
         """
         Initialize the analyzer with user parameters.
@@ -191,6 +193,8 @@ class NanoparticleAnalyzer:
         self.ocr_backend = ocr_backend  # Store OCR backend choice
         self.verify_scale_bar = verify_scale_bar  # Store scale bar verification flag
         self.nm_per_pixel_manual = nm_per_pixel  # Direct nm/pixel input
+        self.save_preprocessing_steps = save_preprocessing_steps
+        self.save_segmentation_steps = save_segmentation_steps
 
         # Store results for batch aggregation
         self.batch_results = []  # Will hold DataFrames from each image
@@ -235,7 +239,11 @@ class NanoparticleAnalyzer:
         # Using Strategy pattern: segmenter implements BaseSegmenter interface
         # This makes it easy to swap in AI segmentation later without changing this code
         self.segmenter = OtsuSegmenter(
-            min_size=self.min_size_px, max_size=self.max_size_px
+            min_size=self.min_size_px,
+            max_size=self.max_size_px,
+            save_steps=self.save_segmentation_steps,
+            output_dir="outputs/segmentation_steps",
+            image_name="placeholder",  # Will be updated per image
         )
 
     # =========================================================================
@@ -485,7 +493,15 @@ class NanoparticleAnalyzer:
             # Returns:
             # - binary: boolean array (True = particle, False = background)
             # - original: grayscale image (for overlay visualization later)
-            binary, original = preprocess_image(img_path)
+            # binary, original = preprocess_image(img_path)
+            binary, original = preprocess_image(
+                img_path,
+                save_steps=(
+                    self.save_preprocessing_steps
+                    if hasattr(self, "save_preprocessing_steps")
+                    else False
+                ),
+            )
 
             # -----------------------------------------------------------------
             # Step 5: Mask out scale bar region
@@ -540,6 +556,11 @@ class NanoparticleAnalyzer:
             # The segmenter (OtsuSegmenter) returns:
             # - labeled: integer array where each particle has unique ID
             # - regions: list of regionprops (area, centroid, etc.)
+            # Update image name for save_steps
+            if self.save_segmentation_steps:
+                base_name = os.path.splitext(os.path.basename(img_path))[0]
+                self.segmenter.image_name = base_name
+
             labeled, regions = self.segmenter.segment(binary)
             logging.info(f"Segmented {len(regions)} regions after exclusion.")
 

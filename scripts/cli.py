@@ -223,6 +223,42 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show detected scale bar and wait for user confirmation (Y/N) before processing",
     )
+
+    p.add_argument(
+        "--save-preprocessing-steps",
+        action="store_true",
+        help=(
+            "Save intermediate preprocessing step images for visualization.\n"
+            "Useful for papers, presentations, and debugging.\n"
+            "Images saved to: outputs/preprocessing_steps/\n"
+            "\n"
+            "Steps saved:\n"
+            "  1. Original image\n"
+            "  2. Normalized (0-255)\n"
+            "  3. CLAHE enhanced\n"
+            "  4. Gaussian blurred\n"
+            "  5. Otsu thresholded\n"
+            "  6. Inverted binary mask"
+        ),
+    )
+
+    p.add_argument(
+        "--save-segmentation-steps",
+        action="store_true",
+        help=(
+            "Save intermediate segmentation step images for visualization.\n"
+            "Useful for papers, presentations, and debugging.\n"
+            "Images saved to: outputs/segmentation_steps/\n"
+            "\n"
+            "Steps saved:\n"
+            "  1. Input binary mask (from preprocessing)\n"
+            "  2. After small object removal (min-size filter)\n"
+            "  3. After large object removal (max-size filter, if used)\n"
+            "  4. After hole filling\n"
+            "  5. Labeled components (color-coded particles)"
+        ),
+    )
+
     return p
 
 
