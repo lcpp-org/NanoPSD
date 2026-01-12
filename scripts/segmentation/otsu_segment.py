@@ -46,7 +46,13 @@ def segment_particles(
     if save_steps:
         os.makedirs(output_dir, exist_ok=True)
 
-    # Step 1: Remove small objects from the binary image
+    # Step 1: Save input binary mask
+    if save_steps:
+        input_vis = (binary_image * 255).astype(np.uint8)
+        cv2.imwrite(f"{output_dir}/{image_name}_step1_input_binary.png", input_vis)
+        print(f"Saved: {output_dir}/{image_name}_step1_input_binary.png")
+
+    # Step 2: Remove small objects from the binary image
     # This is a morphological operation to eliminate noise and tiny specks
     # Any connected group of True pixels smaller than min_size is removed
     cleaned = morphology.remove_small_objects(binary_image, min_size=min_size)
@@ -58,7 +64,7 @@ def segment_particles(
         )
         print(f"Saved: {output_dir}/{image_name}_step2_after_small_removal.png")
 
-    # Step 1.5: Remove large objects if max_size is specified
+    # Step 3: Remove large objects if max_size is specified
     if max_size is not None:
         # Label to get regions, then filter by area
         temp_labeled, _ = ndimage.label(cleaned)
@@ -79,7 +85,7 @@ def segment_particles(
         )
         print(f"Saved: {output_dir}/{image_name}_step3_after_large_removal.png")
 
-    # Step 2: Fill internal holes within objects (particles)
+    # Step 4: Fill internal holes within objects (particles)
     # Ensures that ring-shaped particles or porous features are treated as solid
     # For example, a particle shaped like a donut will be filled in
     filled = ndimage.binary_fill_holes(cleaned)
@@ -91,7 +97,7 @@ def segment_particles(
         )
         print(f"Saved: {output_dir}/{image_name}_step4_after_hole_filling.png")
 
-    # Step 3: Label connected components in the binary image
+    # Step 5: Label connected components in the binary image
     # Each group of connected True pixels gets a unique label: 1, 2, 3, ..., N
     # Background pixels (False) are labeled as 0
     # '_' represents `num_particles` counts the number of detected objects
@@ -120,9 +126,9 @@ def segment_particles(
                 f"Saved: {output_dir}/{image_name}_step5_labeled_components.png (no particles)"
             )
 
-    # Step 4: Compute region properties of the labeled image
+    # Step 6: Compute region properties of the labeled image
     # This returns measurements like area, centroid, bounding box, etc., for each particle
     regions = measure.regionprops(labeled)
 
-    # Step 5: Return the labeled image and list of particle properties
+    # Step 7: Return the labeled image and list of particle properties
     return labeled, regions
