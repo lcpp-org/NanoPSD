@@ -1,5 +1,5 @@
 # NanoPSD
-**Software Package for Analyzing Plasma-Synthesized Nanoparticle Shape Distribution**
+**Software Package for Analyzing Nanoparticle Shape Distribution**
 
 NanoPSD is a production-ready Python package designed to extract **particle shape distributions (PSD)** of **Nanoparticles (NPs)** from **TEM/STEM images**.
 It supports both **single-image** and **batch image** analysis, providing a modular and object-oriented pipeline for nanoparticle research and metrology.
