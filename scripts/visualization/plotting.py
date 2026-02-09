@@ -93,18 +93,18 @@ def plot_results(diameters_nm, image_path, df=None):
         [f"{int(b)}" if b == int(b) else f"{b:.1f}" for b in bins],
         rotation=45,
         ha="right",
-        fontsize=12,
+        fontsize=16,
     )
 
     # Labels and title
-    ax.set_xlabel("Diameter (nm)", fontsize=14, fontweight="bold")
-    ax.set_ylabel("Particle Count", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Equivalent Diameter (nm)", fontsize=18, fontweight="bold")
+    ax.set_ylabel("Particle Count", fontsize=18, fontweight="bold")
     ax.set_title(
-        f"Particle Size Distribution: {base}", fontsize=16, fontweight="bold", pad=15
+        f"Particle Size Distribution: {base}", fontsize=20, fontweight="bold", pad=20
     )
 
     # Y-axis ticks
-    ax.tick_params(axis="y", labelsize=12)
+    ax.tick_params(axis="y", labelsize=16)
 
     # Grid aligned with bins
     ax.set_axisbelow(True)
@@ -131,7 +131,7 @@ def plot_results(diameters_nm, image_path, df=None):
         0.97,
         stats_text,
         transform=ax.transAxes,
-        fontsize=12,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.85, pad=0.6),
@@ -142,10 +142,10 @@ def plot_results(diameters_nm, image_path, df=None):
     # Overlay Mean in RED
     ax.text(
         0.98,
-        0.895,
+        0.880,
         f"  Mean    : {mean_val:6.2f} nm",
         transform=ax.transAxes,
-        fontsize=12,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="red",
@@ -156,10 +156,10 @@ def plot_results(diameters_nm, image_path, df=None):
     # Overlay Median in BLUE
     ax.text(
         0.98,
-        0.860,
+        0.830,
         f"  Median  : {median_val:6.2f} nm",
         transform=ax.transAxes,
-        fontsize=12,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="blue",
@@ -209,9 +209,9 @@ def plot_results(diameters_nm, image_path, df=None):
         )
 
     # Labels and formatting
-    ax.set_ylabel("Diameter (nm)", fontsize=14, fontweight="bold")
+    ax.set_ylabel("Equivalent Diameter (nm)", fontsize=18, fontweight="bold")
     ax.set_title(
-        f"Particle Size Distribution - {base}", fontsize=16, fontweight="bold", pad=20
+        f"Particle Size Distribution - {base}", fontsize=20, fontweight="bold", pad=20
     )
     ax.grid(axis="y", alpha=0.3, linestyle="--")
 
@@ -241,7 +241,7 @@ def plot_results(diameters_nm, image_path, df=None):
             label="Whiskers (1.5×IQR)",
         ),
     ]
-    ax.legend(handles=legend_elements, loc="upper right", fontsize=10, framealpha=0.9)
+    ax.legend(handles=legend_elements, loc="upper right", fontsize=16, framealpha=0.9)
 
     # Add statistical annotations on the plot
     median_val = np.median(diameters_nm)
@@ -262,7 +262,7 @@ def plot_results(diameters_nm, image_path, df=None):
         0.98,
         stats_text,
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
     )
@@ -320,15 +320,15 @@ def plot_aspect_ratio_histogram(df, image_path):
 
     # Set x-ticks
     ax.set_xticks(bins)
-    ax.set_xticklabels([f"{b:.1f}" for b in bins], rotation=45, ha="right", fontsize=12)
+    ax.set_xticklabels([f"{b:.1f}" for b in bins], rotation=45, ha="right", fontsize=16)
 
     # Labels
-    ax.set_xlabel("Aspect Ratio", fontsize=14, fontweight="bold")
-    ax.set_ylabel("Particle Count", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Aspect Ratio", fontsize=18, fontweight="bold")
+    ax.set_ylabel("Particle Count", fontsize=18, fontweight="bold")
     ax.set_title(
-        f"Aspect Ratio Distribution: {base}", fontsize=16, fontweight="bold", pad=15
+        f"Aspect Ratio Distribution: {base}", fontsize=20, fontweight="bold", pad=20
     )
-    ax.tick_params(axis="y", labelsize=12)
+    ax.tick_params(axis="y", labelsize=16)
 
     # Grid
     ax.set_axisbelow(True)
@@ -353,7 +353,7 @@ def plot_aspect_ratio_histogram(df, image_path):
         0.97,
         stats_text,
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.85, pad=0.6),
@@ -364,10 +364,10 @@ def plot_aspect_ratio_histogram(df, image_path):
     # Overlay Mean in RED
     ax.text(
         0.98,
-        0.895,
+        0.880,
         f"  Mean    : {mean_val:6.2f}",
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="red",
@@ -378,10 +378,10 @@ def plot_aspect_ratio_histogram(df, image_path):
     # Overlay Median in BLUE
     ax.text(
         0.98,
-        0.860,
+        0.815,
         f"  Median  : {median_val:6.2f}",
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="blue",
@@ -433,15 +433,15 @@ def plot_circularity_histogram(df, image_path):
 
     # Set x-ticks
     ax.set_xticks(bins)
-    ax.set_xticklabels([f"{b:.2f}" for b in bins], rotation=45, ha="right", fontsize=12)
+    ax.set_xticklabels([f"{b:.2f}" for b in bins], rotation=45, ha="right", fontsize=16)
 
     # Labels
-    ax.set_xlabel("Circularity", fontsize=14, fontweight="bold")
-    ax.set_ylabel("Particle Count", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Circularity", fontsize=18, fontweight="bold")
+    ax.set_ylabel("Particle Count", fontsize=18, fontweight="bold")
     ax.set_title(
-        f"Circularity Distribution: {base}", fontsize=16, fontweight="bold", pad=15
+        f"Circularity Distribution: {base}", fontsize=20, fontweight="bold", pad=20
     )
-    ax.tick_params(axis="y", labelsize=12)
+    ax.tick_params(axis="y", labelsize=16)
 
     # Grid
     ax.set_axisbelow(True)
@@ -466,7 +466,7 @@ def plot_circularity_histogram(df, image_path):
         0.97,
         stats_text,
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.85, pad=0.6),
@@ -477,10 +477,10 @@ def plot_circularity_histogram(df, image_path):
     # Overlay Mean in RED
     ax.text(
         0.98,
-        0.895,
+        0.880,
         f"  Mean    : {mean_val:6.3f}",
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="red",
@@ -491,10 +491,10 @@ def plot_circularity_histogram(df, image_path):
     # Overlay Median in BLUE
     ax.text(
         0.98,
-        0.860,
+        0.815,
         f"  Median  : {median_val:6.3f}",
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="blue",
@@ -546,15 +546,15 @@ def plot_solidity_histogram(df, image_path):
 
     # Set x-ticks
     ax.set_xticks(bins)
-    ax.set_xticklabels([f"{b:.2f}" for b in bins], rotation=45, ha="right", fontsize=12)
+    ax.set_xticklabels([f"{b:.2f}" for b in bins], rotation=45, ha="right", fontsize=16)
 
     # Labels
-    ax.set_xlabel("Solidity", fontsize=14, fontweight="bold")
-    ax.set_ylabel("Particle Count", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Solidity", fontsize=18, fontweight="bold")
+    ax.set_ylabel("Particle Count", fontsize=18, fontweight="bold")
     ax.set_title(
-        f"Solidity Distribution: {base}", fontsize=16, fontweight="bold", pad=15
+        f"Solidity Distribution: {base}", fontsize=20, fontweight="bold", pad=20
     )
-    ax.tick_params(axis="y", labelsize=12)
+    ax.tick_params(axis="y", labelsize=16)
 
     # Grid
     ax.set_axisbelow(True)
@@ -579,7 +579,7 @@ def plot_solidity_histogram(df, image_path):
         0.97,
         stats_text,
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.85, pad=0.6),
@@ -590,10 +590,10 @@ def plot_solidity_histogram(df, image_path):
     # Overlay Mean in RED
     ax.text(
         0.98,
-        0.895,
+        0.880,
         f"  Mean    : {mean_val:6.3f}",
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="red",
@@ -604,10 +604,10 @@ def plot_solidity_histogram(df, image_path):
     # Overlay Median in BLUE
     ax.text(
         0.98,
-        0.860,
+        0.815,
         f"  Median  : {median_val:6.3f}",
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=14,
         verticalalignment="top",
         horizontalalignment="right",
         color="blue",
