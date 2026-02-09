@@ -19,6 +19,7 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.patheffects as path_effects
 
 
 def plot_results(diameters_nm, image_path, df=None):
@@ -172,6 +173,13 @@ def plot_results(diameters_nm, image_path, df=None):
     plt.close()
     print(f"Saved: {out_path}")
 
+    # === Generate additional metric histograms and pie chart ===
+    if df is not None:
+        plot_aspect_ratio_histogram(df, image_path)
+        plot_circularity_histogram(df, image_path)
+        plot_solidity_histogram(df, image_path)
+        plot_morphology_pie_single(df, image_path)
+
     # === Box Plot for Size Distribution (SINGLE IMAGE) ===
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
 
@@ -261,6 +269,432 @@ def plot_results(diameters_nm, image_path, df=None):
 
     plt.tight_layout()
     out_path = f"outputs/figures/{base}_boxplot.png"
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {out_path}")
+
+
+def plot_aspect_ratio_histogram(df, image_path):
+    """Generate aspect ratio distribution histogram (mean + median only)."""
+    base = os.path.splitext(os.path.basename(image_path))[0]
+    aspect_ratios = df["Aspect_Ratio"].values
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Calculate statistics
+    mean_val = np.mean(aspect_ratios)
+    std_val = np.std(aspect_ratios)
+    median_val = np.median(aspect_ratios)
+    min_val = np.min(aspect_ratios)
+    max_val = np.max(aspect_ratios)
+    n_particles = len(aspect_ratios)
+
+    # Smart bin selection for aspect ratio
+    data_range = max_val - min_val
+    if data_range <= 2:
+        bin_width = 0.1
+    elif data_range <= 5:
+        bin_width = 0.2
+    else:
+        bin_width = 0.5
+
+    bin_start = np.floor(min_val / bin_width) * bin_width
+    bin_end = np.ceil(max_val / bin_width) * bin_width
+    bins = np.arange(bin_start, bin_end + bin_width, bin_width)
+
+    # Create histogram
+    n, bins_edges, patches = ax.hist(
+        aspect_ratios,
+        bins=bins,
+        color="skyblue",
+        edgecolor="black",
+        linewidth=1.2,
+        alpha=0.8,
+    )
+
+    # Add mean line (RED)
+    ax.axvline(mean_val, color="red", linestyle="--", linewidth=2, zorder=5)
+
+    # Add median line (BLUE)
+    ax.axvline(median_val, color="blue", linestyle="--", linewidth=2, zorder=5)
+
+    # Set x-ticks
+    ax.set_xticks(bins)
+    ax.set_xticklabels([f"{b:.1f}" for b in bins], rotation=45, ha="right", fontsize=12)
+
+    # Labels
+    ax.set_xlabel("Aspect Ratio", fontsize=14, fontweight="bold")
+    ax.set_ylabel("Particle Count", fontsize=14, fontweight="bold")
+    ax.set_title(
+        f"Aspect Ratio Distribution: {base}", fontsize=16, fontweight="bold", pad=15
+    )
+    ax.tick_params(axis="y", labelsize=12)
+
+    # Grid
+    ax.set_axisbelow(True)
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.grid(axis="x", alpha=0.2, linestyle=":")
+
+    # Statistics box
+    stats_text = (
+        f"  Statistics (n = {n_particles})  \n"
+        f"  ─────────────────────────  \n"
+        f"                              \n"
+        f"                              \n"
+        f"  Std Dev : {std_val:6.2f}\n"
+        f"  Min     : {min_val:6.2f}\n"
+        f"  Max     : {max_val:6.2f}\n"
+        f"  ─────────────────────────  \n"
+        f"  Bin     : {bin_width:6.2f}"
+    )
+
+    ax.text(
+        0.98,
+        0.97,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.85, pad=0.6),
+        family="monospace",
+        linespacing=1.4,
+    )
+
+    # Overlay Mean in RED
+    ax.text(
+        0.98,
+        0.895,
+        f"  Mean    : {mean_val:6.2f}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        color="red",
+        fontweight="bold",
+        family="monospace",
+    )
+
+    # Overlay Median in BLUE
+    ax.text(
+        0.98,
+        0.860,
+        f"  Median  : {median_val:6.2f}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        color="blue",
+        fontweight="bold",
+        family="monospace",
+    )
+
+    plt.tight_layout()
+    out_path = f"outputs/figures/{base}_aspect_ratio_histogram.png"
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {out_path}")
+
+
+def plot_circularity_histogram(df, image_path):
+    """Generate circularity distribution histogram (mean + median only)."""
+    base = os.path.splitext(os.path.basename(image_path))[0]
+    circularities = df["Circularity"].values
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Calculate statistics
+    mean_val = np.mean(circularities)
+    std_val = np.std(circularities)
+    median_val = np.median(circularities)
+    min_val = np.min(circularities)
+    max_val = np.max(circularities)
+    n_particles = len(circularities)
+
+    # Smart bin selection (circularity is 0-1)
+    bin_width = 0.05
+    bins = np.arange(0, 1.05, bin_width)
+
+    # Create histogram
+    n, bins_edges, patches = ax.hist(
+        circularities,
+        bins=bins,
+        color="skyblue",
+        edgecolor="black",
+        linewidth=1.2,
+        alpha=0.8,
+    )
+
+    # Add mean line (RED)
+    ax.axvline(mean_val, color="red", linestyle="--", linewidth=2, zorder=5)
+
+    # Add median line (BLUE)
+    ax.axvline(median_val, color="blue", linestyle="--", linewidth=2, zorder=5)
+
+    # Set x-ticks
+    ax.set_xticks(bins)
+    ax.set_xticklabels([f"{b:.2f}" for b in bins], rotation=45, ha="right", fontsize=12)
+
+    # Labels
+    ax.set_xlabel("Circularity", fontsize=14, fontweight="bold")
+    ax.set_ylabel("Particle Count", fontsize=14, fontweight="bold")
+    ax.set_title(
+        f"Circularity Distribution: {base}", fontsize=16, fontweight="bold", pad=15
+    )
+    ax.tick_params(axis="y", labelsize=12)
+
+    # Grid
+    ax.set_axisbelow(True)
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.grid(axis="x", alpha=0.2, linestyle=":")
+
+    # Statistics box
+    stats_text = (
+        f"  Statistics (n = {n_particles})  \n"
+        f"  ─────────────────────────  \n"
+        f"                              \n"
+        f"                              \n"
+        f"  Std Dev : {std_val:6.3f}\n"
+        f"  Min     : {min_val:6.3f}\n"
+        f"  Max     : {max_val:6.3f}\n"
+        f"  ─────────────────────────  \n"
+        f"  Bin     : {bin_width:6.2f}"
+    )
+
+    ax.text(
+        0.98,
+        0.97,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.85, pad=0.6),
+        family="monospace",
+        linespacing=1.4,
+    )
+
+    # Overlay Mean in RED
+    ax.text(
+        0.98,
+        0.895,
+        f"  Mean    : {mean_val:6.3f}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        color="red",
+        fontweight="bold",
+        family="monospace",
+    )
+
+    # Overlay Median in BLUE
+    ax.text(
+        0.98,
+        0.860,
+        f"  Median  : {median_val:6.3f}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        color="blue",
+        fontweight="bold",
+        family="monospace",
+    )
+
+    plt.tight_layout()
+    out_path = f"outputs/figures/{base}_circularity_histogram.png"
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {out_path}")
+
+
+def plot_solidity_histogram(df, image_path):
+    """Generate solidity distribution histogram (mean + median only)."""
+    base = os.path.splitext(os.path.basename(image_path))[0]
+    solidities = df["Solidity"].values
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Calculate statistics
+    mean_val = np.mean(solidities)
+    std_val = np.std(solidities)
+    median_val = np.median(solidities)
+    min_val = np.min(solidities)
+    max_val = np.max(solidities)
+    n_particles = len(solidities)
+
+    # Smart bin selection (solidity is 0-1)
+    bin_width = 0.05
+    bins = np.arange(0, 1.05, bin_width)
+
+    # Create histogram
+    n, bins_edges, patches = ax.hist(
+        solidities,
+        bins=bins,
+        color="skyblue",
+        edgecolor="black",
+        linewidth=1.2,
+        alpha=0.8,
+    )
+
+    # Add mean line (RED)
+    ax.axvline(mean_val, color="red", linestyle="--", linewidth=2, zorder=5)
+
+    # Add median line (BLUE)
+    ax.axvline(median_val, color="blue", linestyle="--", linewidth=2, zorder=5)
+
+    # Set x-ticks
+    ax.set_xticks(bins)
+    ax.set_xticklabels([f"{b:.2f}" for b in bins], rotation=45, ha="right", fontsize=12)
+
+    # Labels
+    ax.set_xlabel("Solidity", fontsize=14, fontweight="bold")
+    ax.set_ylabel("Particle Count", fontsize=14, fontweight="bold")
+    ax.set_title(
+        f"Solidity Distribution: {base}", fontsize=16, fontweight="bold", pad=15
+    )
+    ax.tick_params(axis="y", labelsize=12)
+
+    # Grid
+    ax.set_axisbelow(True)
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.grid(axis="x", alpha=0.2, linestyle=":")
+
+    # Statistics box
+    stats_text = (
+        f"  Statistics (n = {n_particles})  \n"
+        f"  ─────────────────────────  \n"
+        f"                              \n"
+        f"                              \n"
+        f"  Std Dev : {std_val:6.3f}\n"
+        f"  Min     : {min_val:6.3f}\n"
+        f"  Max     : {max_val:6.3f}\n"
+        f"  ─────────────────────────  \n"
+        f"  Bin     : {bin_width:6.2f}"
+    )
+
+    ax.text(
+        0.98,
+        0.97,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.85, pad=0.6),
+        family="monospace",
+        linespacing=1.4,
+    )
+
+    # Overlay Mean in RED
+    ax.text(
+        0.98,
+        0.895,
+        f"  Mean    : {mean_val:6.3f}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        color="red",
+        fontweight="bold",
+        family="monospace",
+    )
+
+    # Overlay Median in BLUE
+    ax.text(
+        0.98,
+        0.860,
+        f"  Median  : {median_val:6.3f}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="right",
+        color="blue",
+        fontweight="bold",
+        family="monospace",
+    )
+
+    plt.tight_layout()
+    out_path = f"outputs/figures/{base}_solidity_histogram.png"
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {out_path}")
+
+
+def plot_morphology_pie_single(df, image_path):
+    """Generate morphology pie chart with non-overlapping percentage labels."""
+    base = os.path.splitext(os.path.basename(image_path))[0]
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Count morphologies
+    total_spherical = len(df[df["Morphology"] == "spherical"])
+    total_rodlike = len(df[df["Morphology"] == "rod-like"])
+    total_aggregate = len(df[df["Morphology"] == "aggregate"])
+
+    counts = [total_spherical, total_rodlike, total_aggregate]
+    labels = ["Spherical", "Rod-like", "Aggregate"]
+    colors = ["limegreen", "dodgerblue", "tomato"]
+
+    # Create pie WITHOUT autopct (we'll add manually at different radii)
+    wedges, texts = ax.pie(
+        counts,
+        labels=labels,
+        colors=colors,
+        startangle=90,
+        textprops={"fontsize": 14, "fontweight": "bold"},
+        explode=(0.05, 0.05, 0.05),
+        labeldistance=1.15,  # Push slice labels further out
+    )
+
+    # Style the slice label text
+    for text in texts:
+        text.set_fontsize(14)
+        text.set_fontweight("bold")
+
+    # Manually add percentage labels at DIFFERENT radii to avoid overlap
+    # Different pctdistance for each slice: [0.5, 0.65, 0.75]
+    radii = [0.5, 0.75, 0.85]  # Different distances from center
+
+    total = sum(counts)
+    for i, (wedge, count, radius) in enumerate(zip(wedges, counts, radii)):
+        # Calculate angle for positioning
+        angle = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
+
+        # Convert to radians
+        x = radius * np.cos(np.deg2rad(angle))
+        y = radius * np.sin(np.deg2rad(angle))
+
+        # Calculate percentage
+        pct = 100 * count / total
+
+        # Add text at custom position
+        txt = ax.text(
+            x,
+            y,
+            f"{pct:.1f}%\n(n={count})",
+            ha="center",
+            va="center",
+            fontsize=14,
+            fontweight="bold",
+            color="white",
+        )
+
+        # Add black outline for readability on ANY background
+        txt.set_path_effects(
+            [
+                path_effects.Stroke(linewidth=3, foreground="black"),
+                path_effects.Normal(),
+            ]
+        )
+
+    ax.set_title(
+        f"Morphology Distribution: {base}", fontsize=18, fontweight="bold", pad=20
+    )
+
+    plt.tight_layout()
+    out_path = f"outputs/figures/{base}_morphology_pie.png"
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Saved: {out_path}")
@@ -631,7 +1065,7 @@ def plot_batch_comparison(df_all, df_summary):
     # =====================================================================
     # Figure 2B: Pie Chart - Overall Morphology Distribution
     # =====================================================================
-    fig, ax = plt.subplots(1, 1, figsize=(8, 8))  # Single subplot, square for pie
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
     # Prepare data
     total_spherical = df_all[df_all["Morphology"] == "spherical"].shape[0]
@@ -640,37 +1074,58 @@ def plot_batch_comparison(df_all, df_summary):
 
     counts = [total_spherical, total_rodlike, total_aggregate]
     labels = ["Spherical", "Rod-like", "Aggregate"]
-    colors = ["limegreen", "dodgerblue", "tomato"]  # Brighter colors matching bar chart
+    colors = ["limegreen", "dodgerblue", "tomato"]
 
-    # Custom autopct function to show both percentage and count
-    def make_autopct(values):
-        def my_autopct(pct):
-            total = sum(values)
-            val = int(round(pct * total / 100.0))
-            return f"{pct:.1f}%\n(n={val})"  # Shows percentage and count
-
-        return my_autopct
-
-    wedges, texts, autotexts = ax.pie(
+    # Create pie WITHOUT autopct (we'll add manually at different radii)
+    wedges, texts = ax.pie(
         counts,
         labels=labels,
-        autopct=make_autopct(counts),
         colors=colors,
         startangle=90,
         textprops={"fontsize": 14, "fontweight": "bold"},
-        explode=(0.05, 0.05, 0.05),  # Slightly separate slices for clarity
+        explode=(0.05, 0.05, 0.05),
+        labeldistance=1.15,  # Push slice labels further out
     )
 
-    # Make percentage/count text white and bold
-    for autotext in autotexts:
-        autotext.set_color("white")
-        autotext.set_fontsize(14)
-        autotext.set_fontweight("bold")
-
-    # Make label text bold
+    # Style the slice label text
     for text in texts:
         text.set_fontsize(14)
         text.set_fontweight("bold")
+
+    # Manually add percentage labels at DIFFERENT radii to avoid overlap
+    radii = [0.5, 0.75, 0.85]  # Different distances from center
+
+    total = sum(counts)
+    for i, (wedge, count, radius) in enumerate(zip(wedges, counts, radii)):
+        # Calculate angle for positioning
+        angle = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
+
+        # Convert to radians and calculate position
+        x = radius * np.cos(np.deg2rad(angle))
+        y = radius * np.sin(np.deg2rad(angle))
+
+        # Calculate percentage
+        pct = 100 * count / total
+
+        # Add text at custom position
+        txt = ax.text(
+            x,
+            y,
+            f"{pct:.1f}%\n(n={count})",
+            ha="center",
+            va="center",
+            fontsize=14,
+            fontweight="bold",
+            color="white",
+        )
+
+        # Add black outline for readability on ANY background
+        txt.set_path_effects(
+            [
+                path_effects.Stroke(linewidth=3, foreground="black"),
+                path_effects.Normal(),
+            ]
+        )
 
     ax.set_title(
         "Overall Morphology Distribution (All Images)",
