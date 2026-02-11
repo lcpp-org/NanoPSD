@@ -660,7 +660,7 @@ def plot_morphology_pie_single(df, image_path):
 
     # Manually add percentage labels at DIFFERENT radii to avoid overlap
     # Different pctdistance for each slice: [0.5, 0.65, 0.75]
-    radii = [0.5, 0.75, 0.85]  # Different distances from center
+    radii = [0.45, 0.65, 0.80]  # Different distances from center
 
     total = sum(counts)
     for i, (wedge, count, radius) in enumerate(zip(wedges, counts, radii)):
@@ -1098,7 +1098,7 @@ def plot_batch_comparison(df_all, df_summary):
         text.set_fontweight("bold")
 
     # Manually add percentage labels at DIFFERENT radii to avoid overlap
-    radii = [0.5, 0.75, 0.85]  # Different distances from center
+    radii = [0.45, 0.65, 0.8]  # Different distances from center
 
     total = sum(counts)
     for i, (wedge, count, radius) in enumerate(zip(wedges, counts, radii)):
