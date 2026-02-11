@@ -48,6 +48,7 @@ import logging
 import os
 from glob import glob
 from typing import Tuple
+import time
 
 # Local project imports
 from utils.scale_bar import (
@@ -228,6 +229,7 @@ class NanoparticleAnalyzer:
 
         # Store results for batch aggregation
         self.batch_results = []  # Will hold DataFrames from each image
+        self.individual_times = []  # Track processing times for batch mode
 
         # Store morphology thresholds
         self.spherical_ar_max = spherical_ar_max
@@ -333,13 +335,16 @@ class NanoparticleAnalyzer:
 
             logging.info(f"Batch mode: {len(images)} images found.")
 
+            batch_start_time = time.time()  # Start batch timing
+            self.individual_times = []  # Reset for this batch
+
             # Process each image (errors caught per-image, don't stop batch)
             for img in images:
                 self._process_one(img)
 
             # Generate batch aggregation outputs
             if self.batch_results:
-                self._generate_batch_report()
+                self._generate_batch_report(batch_start_time)
             else:
                 logging.warning("No results to aggregate in batch mode")
         else:
@@ -435,6 +440,8 @@ class NanoparticleAnalyzer:
         try:
             base = os.path.basename(img_path)
             logging.info(f"Processing: {base}")
+            start_time = time.time()  # Start timing for performance measurement
+            # ----------------------------------------------------------------------------------------
 
             # -----------------------------------------------------------------
             # Step 1: Determine Calibration Mode (3 options)
@@ -630,6 +637,10 @@ class NanoparticleAnalyzer:
             )
             logging.info(f"Measured {len(diameters_nm)} particles (post-filter).")
 
+            # Calculate and display processing time
+            processing_time = time.time() - start_time
+            logging.info(f"Image processing time: {processing_time:.2f} seconds")
+
             # -----------------------------------------------------------------
             # Step 8: Visualize and export results
             # -----------------------------------------------------------------
@@ -665,6 +676,10 @@ class NanoparticleAnalyzer:
 
             logging.info(f"Completed: {base} | Count={len(diameters_nm)}")
 
+            # Track processing time for batch statistics
+            if self.batch_mode:
+                self.individual_times.append(processing_time)
+
             # Store results for batch aggregation
             if self.batch_mode and len(df) > 0:
                 df_copy = df.copy()
@@ -676,7 +691,7 @@ class NanoparticleAnalyzer:
             # This prevents one bad image from crashing batch mode
             logging.exception(f"Error while processing {img_path}: {e}")
 
-    def _generate_batch_report(self) -> None:
+    def _generate_batch_report(self, batch_start_time) -> None:
         """
         Generate aggregate outputs for batch processing.
 
@@ -739,6 +754,22 @@ class NanoparticleAnalyzer:
 
         # Generate comparison plots
         plot_batch_comparison(df_all, df_summary)
+
+        # Display batch timing statistics
+        total_batch_time = time.time() - batch_start_time
+        avg_time = (
+            sum(self.individual_times) / len(self.individual_times)
+            if self.individual_times
+            else 0
+        )
+
+        logging.info("\n" + "=" * 60)
+        logging.info("BATCH PROCESSING TIME SUMMARY")
+        logging.info("=" * 60)
+        logging.info(f"Total images processed: {len(self.individual_times)}")
+        logging.info(f"Total processing time: {total_batch_time:.2f} seconds")
+        logging.info(f"Average time per image: {avg_time:.2f} seconds")
+        logging.info("=" * 60 + "\n")
 
         logging.info("Batch report generation complete")
 
