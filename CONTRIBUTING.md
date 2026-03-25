@@ -40,11 +40,11 @@ When creating a new issue:
 
 Example issue title:
 
-Improve robustness of scale bar detection
+- Improve robustness of scale bar detection
 
 Example issue description:
 
-Scale bar detection occasionally fails for low-contrast TEM images. Improve detection reliability and test on multiple example images.
+- Scale bar detection occasionally fails for low-contrast TEM images. Improve detection reliability and test on multiple example images.
 
 ---
 
@@ -120,10 +120,10 @@ Use lowercase letters and hyphens.
 
 Examples:
 
-fix-scale-bar-detection  
-improve-contour-filtering  
-update-readme-installation  
-add-batch-processing  
+- fix-scale-bar-detection  
+- improve-contour-filtering  
+- update-readme-installation  
+- add-batch-processing  
 
 ---
 
@@ -135,20 +135,20 @@ Try to ensure that the code runs correctly after each commit.
 
 Example commit messages:
 
-Fix scale bar detection threshold  
-Improve contour filtering robustness  
-Update documentation for batch processing  
-Clean up deprecated comments  
+- Fix scale bar detection threshold  
+- Improve contour filtering robustness  
+- Update documentation for batch processing  
+- Clean up deprecated comments  
 
 After pushing your branch, you may open a pull request.
 
 To close an issue automatically when the pull request is merged, include in the pull request description:
 
-`Closes #issue_number`
+- `Closes #issue_number`
 
 Example:
 
-`Closes #15`
+- `Closes #15`
 
 ---
 
@@ -158,7 +158,7 @@ Pull request titles should briefly describe the change.
 
 Example:
 
-PR: Improve robustness of particle detection
+- PR: Improve robustness of particle detection
 
 ---
 
@@ -255,9 +255,9 @@ Update documentation when functionality changes.
 
 Documentation locations may include:
 
-README.md  
-code comments  
-usage examples  
+- README.md  
+- code comments  
+- usage examples  
 
 ---
 
