@@ -54,27 +54,27 @@ Issues may use the following label types:
 
 **Type labels**
 
-* [bug]: Code is not behaving as expected and needs to be fixed.
+* bug: Code is not behaving as expected and needs to be fixed.
 
-* [documentation]: Improvements or corrections to documentation, README, or comments.
+* documentation: Improvements or corrections to documentation, README, or comments.
 
-* [enhancement]: New feature or improvement to existing functionality.
+* enhancement: New feature or improvement to existing functionality.
 
-* [question]: Discussion about design decisions or implementation details.
+* question: Discussion about design decisions or implementation details.
 
-* [task]: General development activity such as testing, benchmarking, or preparing figures.
+* task: General development activity such as testing, benchmarking, or preparing figures.
 
 **Status labels**
 
-* [working]: Work is currently in progress.
+* working: Work is currently in progress.
 
-* [paused]: Work is temporarily paused.
+* paused: Work is temporarily paused.
 
-* [blocked]: Work depends on completion of another issue.
+* blocked: Work depends on completion of another issue.
 
-* [under review]: Pull request has been submitted and is under review.
+* under review: Pull request has been submitted and is under review.
 
-* [multiple steps]: Feature requires several steps (implementation, testing, documentation).
+* multiple steps: Feature requires several steps (implementation, testing, documentation).
 
 ---
 
@@ -185,10 +185,8 @@ Create a pull request and request review.
 
 Update issue labels:
 
-remove [working]  
-add [under review]  
-
-Address reviewer comments and update the branch as needed.
+* remove working add under review  
+* Address reviewer comments and update the branch as needed.
 
 Ensure:
 
