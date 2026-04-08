@@ -73,7 +73,8 @@ def segment_particles(
     # Step 2: Remove small objects from the binary image
     # This is a morphological operation to eliminate noise and tiny specks
     # Any connected group of True pixels smaller than min_size is removed
-    cleaned = morphology.remove_small_objects(binary_image, min_size=min_size)
+    min_area = int(np.pi * (min_size / 2) ** 2)  # Convert min_size (diameter) to area for circular approximation
+    cleaned = morphology.remove_small_objects(binary_image, min_size=min_area)
 
     if save_steps:
         cleaned_vis = (cleaned * 255).astype(np.uint8)
@@ -91,7 +92,8 @@ def segment_particles(
         # Create mask excluding large objects
         mask = np.ones_like(cleaned, dtype=bool)
         for region in temp_regions:
-            if region.area > max_size:
+            max_area = int(np.pi * (max_size / 2) ** 2)  # Convert max_size (diameter) to area for circular approximation
+            if region.area > max_area:
                 mask[temp_labeled == region.label] = False
 
         cleaned = cleaned & mask
