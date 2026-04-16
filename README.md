@@ -12,6 +12,7 @@ It supports both **single-image** and **batch image** analysis, providing a modu
   - bright particles on dark background (via `--bright-particles` flag)
 - Automated **scale bar & text exclusion** from images
 - **Manual calibration mode** for images without scale bars (direct nm/pixel input)
+- **Interactive ROI selection** (`--interactive-roi`) for analyzing only part of an image
 - **Particle segmentation** using classical methods (Otsu thresholding, preprocessing filters)
 - **Size extraction & visualization** (histograms, plots, CSV export)
 - **Flexible particle filtering** with `--min-size` and `--max-size` (removes noise and false detections)
@@ -505,6 +506,28 @@ python3 nanopsd.py --mode batch --input ./images --algo classical --min-size 3 -
 - If images have different magnifications, process them in separate batches with different `--nm-per-pixel` values
 - For mixed magnifications with scale bars, use `--ocr-backend` (auto-detection) instead
 
+### Optional: Interactive ROI Selection
+
+If you only want to analyze a **portion** of an image (for example, to exclude artifacts, text overlays, or a second magnification panel), add `--interactive-roi`:
+
+```
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical \
+    --min-size 3 --scale-bar-nm 200 --interactive-roi
+```
+
+An OpenCV window opens for each image. Drag a rectangle with the mouse, then:
+
+- Press **ENTER** or **SPACE** to confirm the selection
+- Press **ESC** (or close the window) to cancel and exit
+
+The pipeline then analyzes **only the selected region**. Output files use the original image's filename. Particle centroids in `*_nanoparticle_data.csv` are in **original-image coordinates** (not ROI-local), so they line up with the original input.
+
+**Notes:**
+- Works with all three calibration methods (`--scale-bar-nm`, `--nm-per-pixel`, `--ocr-backend`).
+- Works in batch mode (`--mode batch`), but the user is prompted for every image.
+- Overlay figures (`*_true_contours`, `*_morphology_overlay`, etc.) show the **full original image** with a yellow rectangle around the selected ROI and contours drawn only inside the ROI. Overlay files are saved as `.png` (lossless) regardless of input format.
+- **Known limitation**: legends inside overlays (e.g., the Spherical/Rod-like/Aggregate legend) are drawn inside the ROI rectangle. Moving legends to a position on the full-image canvas is a planned follow-up.
+
 ---
 
 ### Contrast Polarity Option
@@ -631,6 +654,7 @@ batch_images/
 | `--save-segmentation-steps`  | Save step-by-step segmentation images  | `--save-segmentation-steps`  | No  |
 |  `--bright-particles` | Detect bright nanoparticles on dark background | `--bright-particles` | No  |
 | `--only-morphology` | Only report results for a specific morphology type | `--only-morphology spherical` | No |
+| `--interactive-roi` | Drag a rectangle on each image to select the analysis region | `--interactive-roi` | No |
 
 \* **Must provide either `--scale-bar-nm` OR `--nm-per-pixel` (not both)**
 

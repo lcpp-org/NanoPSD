@@ -258,6 +258,8 @@ def main() -> None:
         save_preprocessing_steps=args.save_preprocessing_steps,
         save_segmentation_steps=args.save_segmentation_steps,
         bright_particles=args.bright_particles,
+        # Interactive ROI selection (optional)
+        interactive_roi=args.interactive_roi,
         # Morphology classification thresholds
         spherical_ar_max=thresholds["spherical_ar_max"],
         rodlike_ar_min=thresholds["rodlike_ar_min"],

@@ -327,7 +327,7 @@ def measure_particles(
             "Morphology": [c["morphology"] for c in centroids],
         }
     )
-    df.to_csv("outputs/results/{stem}_nanoparticle_data.csv", index=False)
+    df.to_csv(f"outputs/results/{stem}_nanoparticle_data.csv", index=False)
 
     # Return the list of diameters
     return diameters_nm, combined_img, df
