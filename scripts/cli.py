@@ -392,6 +392,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )    
 
+    p.add_argument(
+        "--interactive-roi",
+        action="store_true",
+        help=(
+            "Drag a rectangle on each image to select the region of interest.\n"
+            "The analysis pipeline is unchanged; it simply processes only\n"
+            "the selected region. Particle centroid coordinates in the output\n"
+            "CSV are offset back to original-image coordinates.\n"
+            "\n"
+            "Works with all calibration methods (--scale-bar-nm, --nm-per-pixel,\n"
+            "--ocr-backend) and with both --mode single and --mode batch.\n"
+            "In batch mode the user will be prompted for every image.\n"
+            "\n"
+            "Controls:\n"
+            "  - Drag a rectangle with the mouse to select a region.\n"
+            "  - Press ENTER or SPACE to confirm.\n"
+            "  - Press ESC (or close the window) to cancel and exit."
+        ),
+    )
+
     # ============================================================================
     # Optional: Morphology Classification Thresholds
     # ============================================================================
