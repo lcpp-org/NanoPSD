@@ -12,11 +12,14 @@ It supports both **single-image** and **batch image** analysis, providing a modu
   - bright particles on dark background (via `--bright-particles` flag)
 - Automated **scale bar & text exclusion** from images
 - **Manual calibration mode** for images without scale bars (direct nm/pixel input)
+- **Interactive ROI selection** (`--interactive-roi`) for analyzing only part of an image
+- **Interactive scale bar calibration** (`--interactive-scale`) for drawing a scale line with the mouse when detection/OCR fails
 - **Particle segmentation** using classical methods (Otsu thresholding, preprocessing filters)
 - **Size extraction & visualization** (histograms, plots, CSV export)
 - **Flexible particle filtering** with `--min-size` and `--max-size` (removes noise and false detections)
 - **Pipeline visualization** for papers and presentations (`--save-preprocessing-steps`, `--save-segmentation-steps`)
 - **Morphology-based nanoparticle classification** (spherical, rod-like, aggregate)
+- **Morphology filtering** via `--only-morphology` (analyze only spherical, rod-like, or aggregate)
 - **Customizable morphology thresholds** via optional CLI flags
 - **Publication-quality plots** with enhanced font sizes and statistics
 - **Comprehensive shape analysis** (aspect ratio, circularity, solidity distributions)
@@ -138,6 +141,8 @@ NanoPSD/
     │   ├── {image}_circular_equivalent.{ext}        # Circular equivalent contours
     │   ├── {image}_elliptical_equivalent.{ext}      # Elliptical fit contours
     │   ├── {image}_all_contour_types.{ext}          # Combined contour comparison
+    │    ── {image_name}_true_circular.{ext}         # True contour and circular equivalent combined
+    │   ├── {image_name}_morphology_overlay.{ext}    # Morphology classification overlayed
     │   │
     │   └── # Batch Mode Outputs:
     │       ├── batch_boxplot_comparison.png          # Size distribution box plots
@@ -164,9 +169,9 @@ NanoPSD/
     ├── results/               # CSV & LaTeX summaries
     │   │
     │   ├── # Single Image Outputs:
-    │   ├── nanoparticle_data.csv          # Per-particle detailed data
-    │   ├── {image_name}_summary.csv       # Summary statistics
-    │   ├── report.tex                     # LaTeX summary
+    │   ├── {image_name}_nanoparticle_data.csv          # Per-particle detailed data
+    │   ├── {image_name}_summary.csv                    # Summary statistics
+    │   ├── report.tex                                  # LaTeX summary
     │   │
     │   └── # Batch Mode Outputs:
     │       ├── batch_all_particles.csv    # Combined data from all images
@@ -272,7 +277,7 @@ For each image, NanoPSD generates:
 
 **Morphology visualizations:**
 - Pie chart showing morphology percentages
-- Color-coded overlay (green=spherical, blue=rod-like, red=aggregate)
+- Color-coded overlay (blue=spherical, cyan=rod-like, magenta=aggregate)
 - 4-panel morphology breakdown by particle type
 
 
@@ -502,6 +507,54 @@ python3 nanopsd.py --mode batch --input ./images --algo classical --min-size 3 -
 - If images have different magnifications, process them in separate batches with different `--nm-per-pixel` values
 - For mixed magnifications with scale bars, use `--ocr-backend` (auto-detection) instead
 
+### Optional: Interactive ROI Selection
+
+If you only want to analyze a **portion** of an image (for example, to exclude artifacts, text overlays, or a second magnification panel), add `--interactive-roi`:
+
+```
+python3 nanopsd.py --mode single --input sample_image_1.tif --algo classical \
+    --min-size 3 --scale-bar-nm 200 --interactive-roi
+```
+
+An OpenCV window opens for each image. Drag a rectangle with the mouse, then:
+
+- Press **ENTER** or **SPACE** to confirm the selection
+- Press **ESC** (or close the window) to cancel and exit
+
+The pipeline then analyzes **only the selected region**. Output files use the original image's filename. Particle centroids in `*_nanoparticle_data.csv` are in **original-image coordinates** (not ROI-local), so they line up with the original input.
+
+**Notes:**
+- Works with all three calibration methods (`--scale-bar-nm`, `--nm-per-pixel`, `--ocr-backend`).
+- Works in batch mode (`--mode batch`), but the user is prompted for every image.
+- Overlay figures (`*_true_contours`, `*_morphology_overlay`, etc.) show the **full original image** with a yellow rectangle around the selected ROI and contours drawn only inside the ROI. Overlay files are saved as `.png` (lossless) regardless of input format.
+- **Known limitation**: legends inside overlays (e.g., the Spherical/Rod-like/Aggregate legend) are drawn inside the ROI rectangle. Moving legends to a position on the full-image canvas is a planned follow-up.
+
+### Optional: Interactive Scale Bar Calibration
+
+When the automatic scale bar detection or OCR fails, or when you want to manually calibrate by drawing across a reference feature, add `--interactive-scale`. This is a **calibration method**, mutually exclusive with `--scale-bar-nm`, `--nm-per-pixel`, and `--ocr-backend`.
+
+```
+python3 nanopsd.py --mode single --input sample.tif --algo classical \
+    --min-size 3 --interactive-scale
+```
+
+**Workflow:**
+1. A window opens showing the image.
+2. Press the mouse button at the scale bar's start, drag to the end, release.
+3. Review the drawn yellow line. Press:
+   - **ENTER** to accept
+   - **R** to redo
+   - **ESC** to cancel
+4. In the terminal, type the scale value (e.g. `200`).
+5. Press `n` for nm or `u` for µm.
+6. The pipeline continues with the computed `nm_per_pixel`.
+
+**Notes:**
+- Works with both `--mode single` and `--mode batch` (the prompt repeats for every image).
+- Composes with `--interactive-roi`: scale is calibrated first, then the ROI prompt appears.
+- The drawn line does not have to be exactly horizontal — Euclidean distance is used.
+
+```
 ---
 
 ### Contrast Polarity Option
@@ -513,6 +566,24 @@ If nanoparticles appear brighter than the background (light-on-dark contrast), u
 ```bash
 nanopsd input_image.png --bright-particles
 ```
+
+### Morphology Filtering
+
+To analyze only a specific particle type, use `--only-morphology`:
+
+```bash
+# Only spherical particles
+python3 nanopsd.py --mode single --input sample.tif --scale-bar-nm 200 --algo classical --min-size 3 --only-morphology spherical
+
+# Only rod-like particles
+python3 nanopsd.py --mode single --input sample.tif --scale-bar-nm 200 --algo classical --min-size 3 --only-morphology rod-like
+
+# Only aggregates
+python3 nanopsd.py --mode single --input sample.tif --scale-bar-nm 200 --algo classical --min-size 3 --only-morphology aggregate
+```
+
+When active, all outputs (contour overlays, morphology overlay, histograms, CSV, and statistics) will only include the selected particle type.
+
 
 ### Single Image Analysis
 
@@ -609,8 +680,13 @@ batch_images/
 | `--save-preprocessing-steps` | Save step-by-step preprocessing images | `--save-preprocessing-steps` | No  |
 | `--save-segmentation-steps`  | Save step-by-step segmentation images  | `--save-segmentation-steps`  | No  |
 |  `--bright-particles` | Detect bright nanoparticles on dark background | `--bright-particles` | No  |
+| `--only-morphology` | Only report results for a specific morphology type | `--only-morphology spherical` | No |
+| `--interactive-roi` | Drag a rectangle on each image to select the analysis region | `--interactive-roi` | No |
+| `--interactive-scale` | Draw a line across the scale bar; type value and unit in terminal | `--interactive-scale` | One of these\* |
 
-\* **Must provide either `--scale-bar-nm` OR `--nm-per-pixel` (not both)**
+Note: `--interactive-scale` is "one of these*" because it's a calibration method (mutually exclusive with the other three).
+
+\* **Must provide either `--scale-bar-nm` OR `--nm-per-pixel` OR `--interactive-scale` (not any two at a time)**
 
 <!-- | Parameter           | Description                                     | Example                  |
 |---------------------|-------------------------------------------------|--------------------------|
@@ -722,9 +798,9 @@ python3 nanopsd.py --mode batch --input ./images/ --scale-bar-nm 200 \
 ### Visualization
 
 Particles are color-coded in the morphology overlay:
-- **Green**: Spherical particles
-- **Blue**: Rod-like particles
-- **Red**: Aggregate particles
+- **Blue**: Spherical particles
+- **Cyan**: Rod-like particles
+- **Magenta**: Aggregate particles
 
 ### Output Files
 
@@ -732,7 +808,7 @@ Particles are color-coded in the morphology overlay:
 
 NanoPSD generates the following outputs for each image:
 
-**1. Detailed Particle Data** (`nanoparticle_data.csv`):
+**1. Detailed Particle Data** (`{image_name}_nanoparticle_data.csv`):
 ```csv
 Diameter (nm),Diameter (pixels),Centroid_X,Centroid_Y,Aspect_Ratio,Circularity,Solidity,Extent,Morphology
 42.5,20.8,523.4,312.1,1.2,0.85,0.92,0.78,spherical
@@ -760,7 +836,7 @@ sample_image.tif,147,42.35,12.78,39.21,18.45,89.32,89,32,26
 
 *Morphology Classification:*
 - `{image}_morphology_pie.png` - Morphology distribution pie chart (percentages and counts)
-- `{image}_morphology_overlay.{ext}` - Color-coded particle contours (Green=Spherical, Blue=Rod-like, Red=Aggregate)
+- `{image}_morphology_overlay.{ext}` - Color-coded particle contours (Blue=Spherical, Cyan=Rod-like, Magenta=Aggregate)
 - `{image}_morphology_histograms.png` - 4-panel morphology breakdown by particle type
 
 *Contour Overlays:*

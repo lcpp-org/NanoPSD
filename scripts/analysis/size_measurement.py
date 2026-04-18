@@ -22,9 +22,9 @@ import numpy as np
 import pandas as pd
 import cv2
 import matplotlib.pyplot as plt
-from skimage.draw import ellipse_perimeter
+# from skimage.draw import ellipse_perimeter
 
-CONTOUR_THICKNESS = 1  # Thickness of contour lines when drawing
+CONTOUR_THICKNESS = 5  # Thickness of contour lines when drawing
 
 
 def measure_particles(
@@ -35,6 +35,7 @@ def measure_particles(
     image_path,
     min_size_px=5,
     max_size_px=None,
+    only_morphology=None,
     # Morphology classification thresholds
     spherical_ar_max=1.5,
     spherical_c_min=0.75,
@@ -78,6 +79,8 @@ def measure_particles(
     circular_img = true_contour_img.copy()
     elliptical_img = true_contour_img.copy()
     combined_img = true_contour_img.copy()
+    true_circular_img = true_contour_img.copy()
+    morphology_overlay = img_for_overlay.copy()
 
     # Initialize list to store particle diameters (in nanometers)
     diameters_pixels = []
@@ -110,59 +113,15 @@ def measure_particles(
             # Create a binary mask for the current region
             # 'labeled == region.label' will be True for pixels belonging to this region
             # Convert boolean mask to uint8 (0 or 1) so OpenCV can process it
+            
             region_mask = (labeled_image == region.label).astype(np.uint8)
 
-            # --- 1. True Contour (in BLUE) ---
-            # Find contours in the binary mask
-            # Since we're looking at one particle at a time, there should typically be just one contour
-            # cv2.RETR_EXTERNAL: retrieve only outer contours (ignores internal holes)
-            # cv2.CHAIN_APPROX_SIMPLE: compresses contour points (saves memory)
-            contours, _ = cv2.findContours(
-                region_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-            # Draw the contours on the image
-            # -1 indicates all contours found
-            # (0, 0, 255) sets the contour color to red (in BGR format)
-            # Thickness of 1 pixel
-            cv2.drawContours(
-                true_contour_img, contours, -1, (255, 0, 0), CONTOUR_THICKNESS
-            )
-            cv2.drawContours(combined_img, contours, -1, (255, 0, 0), CONTOUR_THICKNESS)
-
-            # --- 2. Circular Equivalent Contour (in RED) ---
-            d_px = region.equivalent_diameter
-            y, x = region.centroid
-            rr, cc = ellipse_perimeter(int(y), int(x), int(d_px / 2), int(d_px / 2))
-            rr = np.clip(rr, 0, original_image.shape[0] - 1)
-            cc = np.clip(cc, 0, original_image.shape[1] - 1)
-            circular_img[rr, cc] = (0, 0, 255)
-            combined_img[rr, cc] = (0, 0, 255)
-
-            # --- 3. Elliptical Equivalent Contour (in PINK) ---
-            for contour in contours:
-                if len(contour) >= 5:
-                    ellipse = cv2.fitEllipse(contour)
-                    # Validate ellipse dimensions before drawing
-                    (center, axes, angle) = ellipse
-                    if (
-                        axes[0] > 0 and axes[1] > 0
-                    ):  # Check width and height are positive
-                        cv2.ellipse(
-                            elliptical_img, ellipse, (255, 0, 255), CONTOUR_THICKNESS
-                        )
-                        cv2.ellipse(
-                            combined_img, ellipse, (255, 0, 255), CONTOUR_THICKNESS
-                        )
-
-            # Morphology Classification
-            # Calculate shape metrics
-            # Smooth the region mask to reduce boundary noise
+            # --- Classify morphology FIRST ---
             kernel_size = max(3, int(np.sqrt(region.area) * 0.1) // 2 * 2 + 1)
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
             smoothed_mask = cv2.morphologyEx(region_mask, cv2.MORPH_CLOSE, kernel)
             smoothed_mask = cv2.morphologyEx(smoothed_mask, cv2.MORPH_OPEN, kernel)
 
-            # Recalculate shape metrics from smoothed contour
             smooth_contours, _ = cv2.findContours(smoothed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if smooth_contours:
                 smooth_cnt = max(smooth_contours, key=cv2.contourArea)
@@ -173,11 +132,9 @@ def measure_particles(
                 smooth_area = region.area
 
             if len(region.coords) >= 5:
-                # Get perimeter (already calculated earlier but need it here too)
                 major_axis = region.major_axis_length
                 minor_axis = region.minor_axis_length
                 aspect_ratio = major_axis / max(minor_axis, 1e-6)
-
                 circularity = (4 * np.pi * smooth_area) / max(perimeter**2, 1e-6)
                 if smooth_contours:
                     hull = cv2.convexHull(smooth_cnt)
@@ -187,8 +144,6 @@ def measure_particles(
                     solidity = region.solidity
                 extent = region.extent
 
-                # Classification logic (priority: aggregate > spherical > rod-like)
-                # Using configurable thresholds
                 if solidity < aggregate_s_max or circularity < aggregate_c_max:
                     morphology = "aggregate"
                 elif (
@@ -208,8 +163,63 @@ def measure_particles(
                 extent = 1.0
                 morphology = "aggregate"
 
-            # Add the diameter to the result list
-            # Store all measurements in lists
+            # --- Skip if doesn't match filter ---
+            if only_morphology is not None and morphology != only_morphology:
+                continue
+
+            # --- 1. True Contour (in BLUE) ---
+            contours, _ = cv2.findContours(
+                region_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            cv2.drawContours(true_contour_img, contours, -1, (255, 0, 0), CONTOUR_THICKNESS)
+            cv2.drawContours(combined_img, contours, -1, (255, 0, 0), CONTOUR_THICKNESS)
+            cv2.drawContours(true_circular_img, contours, -1, (255, 0, 0), CONTOUR_THICKNESS)
+
+            # --- Morphology color contour (inline — avoids index desync with --only-morphology) ---
+            morph_color = {
+                "spherical": (255, 0, 0),   # Blue (BGR)
+                "rod-like": (255, 255, 0),  # Bright Cyan
+                "aggregate": (255, 0, 255), # Magenta
+            }
+            cv2.drawContours(
+                morphology_overlay, contours, -1,
+                morph_color.get(morphology, (255, 255, 255)), CONTOUR_THICKNESS
+            )
+
+            # --- 2. Circular Equivalent Contour (in CYAN) ---
+            d_px = region.equivalent_diameter
+            y, x = region.centroid
+            cv2.circle(circular_img, (int(x), int(y)), int(d_px / 2), (255, 0, 255), CONTOUR_THICKNESS)
+            cv2.circle(combined_img, (int(x), int(y)), int(d_px / 2), (255, 0, 255), CONTOUR_THICKNESS)
+            cv2.circle(true_circular_img, (int(x), int(y)), int(d_px / 2), (255, 0, 255), CONTOUR_THICKNESS)
+
+            # --- 3. Elliptical Equivalent Contour (in PINK) ---
+            # cv2.fitEllipse is an ill-conditioned least-squares fit on
+            # contours that are essentially collinear (1-pixel-wide strips,
+            # edge fragments). It can return degenerate ellipses with
+            # near-zero minor axes or absurdly large major axes (e.g.,
+            # ~7.7e7 px), which render as horizontal or vertical lines
+            # across the entire overlay. Reject these by requiring:
+            #   - both axes >= 1 pixel (reject near-zero)
+            #   - both axes <= 2x the contour's bounding-box diagonal
+            #     (reject axis-length explosions)
+            for contour in contours:
+                if len(contour) >= 5:
+                    ellipse = cv2.fitEllipse(contour)
+                    (center, axes, angle) = ellipse
+                    x_bb, y_bb, cw_bb, ch_bb = cv2.boundingRect(contour)
+                    bbox_diag = (cw_bb * cw_bb + ch_bb * ch_bb) ** 0.5
+                    max_axis = max(10.0, bbox_diag * 2.0)
+                    if (axes[0] >= 1.0 and axes[1] >= 1.0
+                            and axes[0] <= max_axis and axes[1] <= max_axis):
+                        cv2.ellipse(
+                            elliptical_img, ellipse, (255, 0, 255), CONTOUR_THICKNESS
+                        )
+                        cv2.ellipse(
+                            combined_img, ellipse, (255, 0, 255), CONTOUR_THICKNESS
+                        )
+
+            # --- Store measurements ---
             diameters_pixels.append(d_px)
             diameters_nm.append(d_nm)
             centroids.append(
@@ -229,6 +239,11 @@ def measure_particles(
     stem = os.path.splitext(os.path.basename(image_path))[0]  # e.g., "SEM_Sample_Image"
     ext = os.path.splitext(image_path)[1]  # e.g., ".tif"
 
+    # Scale legend text to image size (reference: 2048px width)
+    _font_scale = max(0.5, img_for_overlay.shape[1] / 700)
+    _font_thick = max(1, int(_font_scale * 2.5))
+    _legend_gap = max(30, int(img_for_overlay.shape[1] / 20))
+
     true_path = f"outputs/figures/{stem}_true_contours{ext}"
     circ_path = f"outputs/figures/{stem}_circular_equivalent{ext}"
     ell_path = f"outputs/figures/{stem}_elliptical_equivalent{ext}"
@@ -245,82 +260,66 @@ def measure_particles(
     print(" -", ell_path)
     print(" -", all_path)
 
-    # Morphology overlay
-    morphology_overlay = img_for_overlay.copy()
+    # True contour + circular equivalent combined overlay with legend
+    tc_path = f"outputs/figures/{stem}_true_circular{ext}"
+    legend_y = _legend_gap
+    legend_items_tc = [
+        ("True Contour", (255, 0, 0)),
+        ("Circular Equivalent", (255, 0, 255)),
+    ]
+    for text, color in legend_items_tc:
+        cv2.putText(
+            true_circular_img, text, (15, legend_y),
+            cv2.FONT_HERSHEY_SIMPLEX, _font_scale, color, _font_thick,
+        )
+        legend_y += _legend_gap
+    cv2.imwrite(tc_path, true_circular_img)
+    print(" -", tc_path)
 
-    color_map = {
-        "spherical": (0, 100, 0),  # Dark Green
-        "rod-like": (255, 0, 0),  # Blue (BGR)
-        "aggregate": (0, 0, 255),  # Red
-    }
-
-    # Debug counts
+    # Morphology distribution summary
     morph_types = [c["morphology"] for c in centroids]
     from collections import Counter
-
     counts = Counter(morph_types)
     print(f"Morphology distribution: {dict(counts)}")
 
-    region_idx = 0
-    for region in regions:
-        if max_area_px >= region.area >= min_area_px:
-            if region_idx >= len(centroids):
-                break
+    # # Morphology overlay
+    # # True contour + circular equivalent combined overlay with legend
+    # tc_path = f"outputs/figures/{stem}_true_circular{ext}"
+    # legend_y = _legend_gap
+    # for text, color in [("True Contour", (255, 0, 0)), ("Circular Equivalent", (0, 255, 255))]:
+    #     cv2.putText(
+    #         true_circular_img, text, (15, legend_y),
+    #         cv2.FONT_HERSHEY_SIMPLEX, 3.0, color, 8,
+    #     )
+    #     legend_y += _legend_gap
+    # cv2.imwrite(tc_path, true_circular_img)
+    # print(" -", tc_path)
 
-            morph = centroids[region_idx]["morphology"]
-            color = color_map.get(morph, (255, 255, 255))
+    # # Morphology distribution summary
+    # morph_types = [c["morphology"] for c in centroids]
+    # from collections import Counter
+    # counts = Counter(morph_types)
+    # print(f"Morphology distribution: {dict(counts)}")
 
-            region_mask = (labeled_image == region.label).astype(np.uint8)
-            contours, _ = cv2.findContours(
-                region_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    # Add legend to morphology overlay (only for morphologies present)
+    legend_items = [
+        ("Spherical", (255, 0, 0), "spherical"),
+        ("Rod-like", (255, 255, 0), "rod-like"),
+        ("Aggregate", (255, 0, 255), "aggregate"),
+    ]
+    legend_y = _legend_gap
+    for text, color, morph in legend_items:
+        if morph in morph_types:
+            cv2.putText(
+                morphology_overlay,
+                text,
+                (15, legend_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                _font_scale,
+                color,
+                _font_thick,
             )
-            cv2.drawContours(morphology_overlay, contours, -1, color, CONTOUR_THICKNESS)
-
-            # Optionally, add text labels at centroids for each particle. S = spherical, R = rod-like, A = aggregate
-            # Commented out for clarity.
-            # cy, cx = region.centroid
-            # label = morph[0].upper()
-            # cv2.putText(
-            #     morphology_overlay,
-            #     label,
-            #     (int(cx) - 5, int(cy) + 5),
-            #     cv2.FONT_HERSHEY_SIMPLEX,
-            #     0.5,
-            #     color,
-            #     1,
-            # )
-
-            region_idx += 1
-
-    # Add legend
-    legend_y = 60
-    cv2.putText(
-        morphology_overlay,
-        "Green = Spherical",
-        (15, legend_y),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        2.0,
-        (0, 100, 0),
-        5,
-    )
-    cv2.putText(
-        morphology_overlay,
-        "Blue = Rod-like",
-        (15, legend_y + 60),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        2.0,
-        (255, 0, 0),
-        5,
-    )
-    cv2.putText(
-        morphology_overlay,
-        "Red = Aggregate",
-        (15, legend_y + 120),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        2.0,
-        (0, 0, 255),
-        5,
-    )
+            legend_y += _legend_gap
 
     # Save morphology overlay
     morph_path = f"outputs/figures/{stem}_morphology_overlay{ext}"
@@ -341,7 +340,7 @@ def measure_particles(
             "Morphology": [c["morphology"] for c in centroids],
         }
     )
-    df.to_csv("outputs/results/nanoparticle_data.csv", index=False)
+    df.to_csv(f"outputs/results/{stem}_nanoparticle_data.csv", index=False)
 
     # Return the list of diameters
     return diameters_nm, combined_img, df

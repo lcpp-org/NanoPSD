@@ -96,3 +96,8 @@ Thumbs.db
 *.pdf
 # Keep sample reports
 !example_report.pdf
+
+# ----------------------------
+# Interactive ROI cache (temporary cropped images)
+# ----------------------------
+outputs/.cache/

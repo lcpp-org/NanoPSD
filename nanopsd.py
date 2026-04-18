@@ -195,8 +195,8 @@ def main() -> None:
     -----------------
     outputs/
     ├── results/
-    │   ├── nanoparticle_data.csv        # Particle diameters
-    │   └── {image_name}_summary.tex     # Statistical summary (LaTeX)
+    │   ├── {image_name}_nanoparticle_data.csv    # Particle diameters
+    │   └── {image_name}_summary.tex              # Statistical summary (LaTeX)
     └── figures/
         ├── {image_name}_diameter_histogram.png
         ├── {image_name}_true_contours.{ext}
@@ -258,6 +258,10 @@ def main() -> None:
         save_preprocessing_steps=args.save_preprocessing_steps,
         save_segmentation_steps=args.save_segmentation_steps,
         bright_particles=args.bright_particles,
+        # Interactive ROI selection (optional)
+        interactive_roi=args.interactive_roi,
+        # Interactive scale bar line selection (optional)
+        interactive_scale=args.interactive_scale,
         # Morphology classification thresholds
         spherical_ar_max=thresholds["spherical_ar_max"],
         rodlike_ar_min=thresholds["rodlike_ar_min"],
@@ -266,6 +270,8 @@ def main() -> None:
         rodlike_s_min=thresholds["rodlike_s_min"],
         aggregate_s_max=thresholds["aggregate_s_max"],
         spherical_s_min=thresholds["spherical_s_min"],
+        # Morphology filtering
+        only_morphology=args.only_morphology,
     )
 
     # -------------------------------------------------------------------------

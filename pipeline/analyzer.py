@@ -49,6 +49,7 @@ import os
 from glob import glob
 from typing import Tuple
 import time
+import sys
 
 # Local project imports
 from utils.scale_bar import (
@@ -56,6 +57,14 @@ from utils.scale_bar import (
     detect_scale_bar,  # Main geometric detector
     detect_scale_label,  # OCR text reader
 )
+
+from utils.interactive import (
+    select_roi_interactive,
+    crop_to_cache,
+    delete_cache_file,
+    select_scale_line_interactive,
+)
+
 from scripts.preprocessing.clahe_filter import preprocess_image
 from scripts.segmentation.otsu_impl import OtsuSegmenter
 from scripts.analysis.size_measurement import (
@@ -141,6 +150,9 @@ class NanoparticleAnalyzer:
         save_preprocessing_steps: bool = False,
         save_segmentation_steps: bool = False,
         bright_particles: bool = False,
+        only_morphology: str = None,
+        interactive_roi: bool = False,
+        interactive_scale: bool = False,
         # Morphology classification thresholds
         spherical_ar_max=1.5,
         rodlike_ar_min=1.8,
@@ -224,6 +236,9 @@ class NanoparticleAnalyzer:
         self.save_preprocessing_steps = save_preprocessing_steps
         self.save_segmentation_steps = save_segmentation_steps
         self.bright_particles = bright_particles
+        self.only_morphology = only_morphology  # Store morphology filtering option
+        self.interactive_roi = bool(interactive_roi)  # Interactive ROI selection
+        self.interactive_scale = bool(interactive_scale)  # Interactive scale bar line selection
 
         # Store results for batch aggregation
         self.batch_results = []  # Will hold DataFrames from each image
@@ -242,16 +257,20 @@ class NanoparticleAnalyzer:
         has_scale_bar = self.scale_bar_nm is not None
         has_ocr = self.ocr_backend is not None
         has_nm_per_px = self.nm_per_pixel_manual is not None
+        has_interactive_scale = self.interactive_scale
 
         # Count how many methods provided
-        methods_count = sum([has_scale_bar, has_ocr, has_nm_per_px])
+        methods_count = sum(
+            [has_scale_bar, has_ocr, has_nm_per_px, has_interactive_scale]
+        )
 
         if methods_count == 0:
             raise ValueError(
                 "Must provide ONE calibration method:\n"
                 "  --scale-bar-nm VALUE     (manual scale value)\n"
                 "  --ocr-backend BACKEND    (automatic OCR detection)\n"
-                "  --nm-per-pixel VALUE     (no scale bar)"
+                "  --nm-per-pixel VALUE     (no scale bar)\n"
+                "  --interactive-scale      (draw scale bar with mouse)"
             )
 
         if methods_count > 1:
@@ -262,6 +281,8 @@ class NanoparticleAnalyzer:
                 methods_used.append("ocr_backend")
             if has_nm_per_px:
                 methods_used.append("nm_per_pixel")
+            if has_interactive_scale:
+                methods_used.append("interactive_scale")
 
             raise ValueError(
                 f"Cannot use multiple calibration methods: {', '.join(methods_used)}\n"
@@ -332,6 +353,13 @@ class NanoparticleAnalyzer:
                 return
 
             logging.info(f"Batch mode: {len(images)} images found.")
+
+            if self.interactive_roi:
+                logging.warning(
+                    "⚠️  --interactive-roi is active in batch mode. "
+                    f"You will be prompted to draw a rectangle on each of "
+                    f"the {len(images)} images."
+                )
 
             batch_start_time = time.time()  # Start batch timing
             self.individual_times = []  # Reset for this batch
@@ -435,6 +463,16 @@ class NanoparticleAnalyzer:
         - Logs progress messages
         - Prints OCR success/failure messages
         """
+
+        # Interactive ROI bookkeeping — set before try: so the finally block
+        # can always clean up the cache file even if an exception occurs.
+        original_img_path = img_path
+        roi_offset = (0, 0)  # (x, y) offset to add back to centroids
+        cached_crop_path = None
+        roi_norm_min = None  # intensity anchor for preprocessing (None = default)
+        roi_norm_max = None
+        roi_otsu_threshold = None  # Otsu threshold from full original image
+
         try:
             base = os.path.basename(img_path)
             logging.info(f"Processing: {base}")
@@ -445,7 +483,24 @@ class NanoparticleAnalyzer:
             # Step 1: Determine Calibration Mode (3 options)
             # -----------------------------------------------------------------
 
-            if self.nm_per_pixel_manual is not None:
+            if self.interactive_scale:
+                # MODE D: Interactive scale line drawing (user draws across
+                # the scale bar with the mouse, then types the scale value
+                # and unit). The pipeline then proceeds as in MODE A — no
+                # geometric detection or OCR runs, no bar masking.
+                logging.info("✏️  Interactive scale bar line mode")
+                nm_per_pixel = select_scale_line_interactive(img_path)
+                if nm_per_pixel is None:
+                    print("\n" + "=" * 60)
+                    print("INTERACTIVE SCALE SELECTION CANCELLED - Exiting NanoPSD.")
+                    print("=" * 60 + "\n")
+                    sys.exit(2)
+                bar_mask = None
+                logging.info(
+                    f"Calibration: {nm_per_pixel:.4f} nm/pixel (interactive)"
+                )
+
+            elif self.nm_per_pixel_manual is not None:
                 # MODE A: Manual calibration (no scale bar)
                 logging.info("⚙️  Manual calibration mode (no scale bar)")
                 nm_per_pixel = self.nm_per_pixel_manual
@@ -493,8 +548,11 @@ class NanoparticleAnalyzer:
                     if not self._show_verification(
                         img_path, bar_bbox, scale_bar_px, eff_scale_nm
                     ):
-                        logging.warning(f"User rejected: {base}")
-                        return
+                        print("\n" + "=" * 60)
+                        print("SCALE BAR REJECTED - Exiting NanoPSD.")
+                        print("Try: --scale-bar-nm VALUE or --nm-per-pixel VALUE")
+                        print("=" * 60 + "\n")
+                        sys.exit(1)
 
                 # Compute calibration factor
                 nm_per_pixel = self._compute_nm_per_pixel(eff_scale_nm, scale_bar_px)
@@ -521,14 +579,52 @@ class NanoparticleAnalyzer:
                     if not self._show_verification(
                         img_path, bar_bbox, scale_bar_px, eff_scale_nm
                     ):
-                        logging.warning(f"User rejected: {base}")
-                        return
+                        print("\n" + "=" * 60)
+                        print("SCALE BAR REJECTED - Exiting NanoPSD.")
+                        print("Try: --scale-bar-nm VALUE or --nm-per-pixel VALUE")
+                        print("=" * 60 + "\n")
+                        sys.exit(1)
 
                 # Step 3: Compute calibration factor
                 nm_per_pixel = self._compute_nm_per_pixel(eff_scale_nm, scale_bar_px)
                 logging.info(
                     f"Calibration: {nm_per_pixel:.4f} nm/pixel "
                     f"(bar: {scale_bar_px}px, value: {eff_scale_nm}nm)"
+                )
+
+            # -----------------------------------------------------------------
+            # Step 3b (optional): Interactive ROI selection
+            # -----------------------------------------------------------------
+            # If --interactive-roi is active, ask the user to drag a rectangle
+            # on the ORIGINAL image and crop to that region. Scale bar
+            # detection has already happened on the full image above, so
+            # nm_per_pixel is already known. From here on, the pipeline will
+            # process only the cropped region. Centroids are offset back to
+            # original-image coordinates after measurement.
+            if self.interactive_roi:
+                roi = select_roi_interactive(img_path)
+                if roi is None:
+                    print("\n" + "=" * 60)
+                    print("ROI SELECTION CANCELLED - Exiting NanoPSD.")
+                    print("=" * 60 + "\n")
+                    sys.exit(2)
+
+                (
+                    cached_crop_path,
+                    roi_norm_min,
+                    roi_norm_max,
+                    roi_otsu_threshold,
+                ) = crop_to_cache(img_path, roi)
+                roi_offset = (roi[0], roi[1])
+                img_path = cached_crop_path  # pipeline processes the crop
+                logging.info(
+                    f"Interactive ROI active. Offset to apply to centroids: "
+                    f"x+={roi_offset[0]}, y+={roi_offset[1]}"
+                )
+                logging.info(
+                    f"Preprocessing will use anchored normalization "
+                    f"(min={roi_norm_min}, max={roi_norm_max}) and "
+                    f"Otsu threshold {roi_otsu_threshold:.1f} from original image"
                 )
 
             # -----------------------------------------------------------------
@@ -546,14 +642,29 @@ class NanoparticleAnalyzer:
                     else False
                 ),
                 bright_particles=self.bright_particles,
+                norm_min=roi_norm_min,
+                norm_max=roi_norm_max,
+                otsu_threshold=roi_otsu_threshold,
             )
 
             # -----------------------------------------------------------------
             # Step 5: Mask out scale bar region
             # -----------------------------------------------------------------
             # The scale bar would otherwise be detected as a huge "particle"
-            # We set all pixels in the bar region to False (background)
-            if bar_mask is not None:
+            # We set all pixels in the bar region to False (background).
+            #
+            # When --interactive-roi is active, the binary array is in the
+            # cropped coordinate space but bar_mask is in original-image
+            # coordinates, so they can't be combined directly. Per design,
+            # we trust the user's ROI selection — if the bar is inside the
+            # ROI they included it on purpose; if it's outside, there is
+            # nothing to mask. Skip the entire masking block.
+            if self.interactive_roi:
+                logging.info(
+                    "✓ Skipping scale-bar masking (interactive ROI — "
+                    "trusting user's selected region)"
+                )
+            elif bar_mask is not None:
                 logging.info("Excluding scale bar region from particle detection...")
                 binary = binary.copy()
                 binary[bar_mask > 0] = False
@@ -617,6 +728,7 @@ class NanoparticleAnalyzer:
             # - diameters_nm: list of floats (diameter in nm for each particle)
             # - overlay_image: annotated image with contours
             # - df: pandas DataFrame with measurements (unused here)
+
             diameters_nm, overlay_image, df = measure_particles(
                 regions,
                 labeled,
@@ -633,8 +745,45 @@ class NanoparticleAnalyzer:
                 aggregate_c_max=self.aggregate_c_max,
                 rodlike_ar_min=self.rodlike_ar_min,
                 rodlike_s_min=self.rodlike_s_min,
+                only_morphology=self.only_morphology,
             )
             logging.info(f"Measured {len(diameters_nm)} particles (post-filter).")
+
+            # If interactive ROI was active, offset centroids back to
+            # original-image coordinates so the CSV aligns with the
+            # original input, and composite the crop-sized overlays onto
+            # the full original image so users see context.
+            if self.interactive_roi and roi_offset != (0, 0):
+                stem = os.path.splitext(os.path.basename(original_img_path))[0]
+
+                # 1) Offset centroids in the CSV (if any particles were found)
+                if len(df) > 0:
+                    if "Centroid_X" in df.columns:
+                        df["Centroid_X"] = df["Centroid_X"] + roi_offset[0]
+                    if "Centroid_Y" in df.columns:
+                        df["Centroid_Y"] = df["Centroid_Y"] + roi_offset[1]
+                    csv_path = f"outputs/results/{stem}_nanoparticle_data.csv"
+                    if os.path.exists(csv_path):
+                        df.to_csv(csv_path, index=False)
+                        logging.info(
+                            f"Offset applied to centroids: +{roi_offset} "
+                            f"(rewrote {csv_path})"
+                        )
+
+                # 2) Composite each crop-sized overlay back onto a full-image
+                #    canvas with a visible ROI rectangle. Overlays produced
+                #    by measure_particles are saved to outputs/figures/ with
+                #    filenames derived from image_path (the cache .png), so
+                #    they use the .png extension from the cache. We rewrite
+                #    them here at full size with the same .png extension
+                #    (lossless, avoids JPEG artifacts around contour lines).
+                self._composite_overlays_to_full_image(
+                    original_img_path=original_img_path,
+                    stem=stem,
+                    crop_ext=os.path.splitext(cached_crop_path)[1],
+                    roi_x=roi_offset[0],
+                    roi_y=roi_offset[1],
+                )
 
             # Calculate and display processing time
             processing_time = time.time() - start_time
@@ -643,15 +792,22 @@ class NanoparticleAnalyzer:
             # -----------------------------------------------------------------
             # Step 8: Visualize and export results
             # -----------------------------------------------------------------
+            # Use the ORIGINAL image path for downstream reporting so the
+            # LaTeX report, summary CSV, and plot titles identify the image
+            # by its original filename rather than the interactive-ROI
+            # cache file. When --interactive-roi is off, original_img_path
+            # equals img_path, so this is a no-op.
+            report_path = original_img_path
+
             # plot_results: generates histograms (overall + morphology)
-            plot_results(diameters_nm, img_path, df=df)
+            plot_results(diameters_nm, report_path, df=df)
 
             # export_to_latex: generates statistical summary table
-            export_to_latex(diameters_nm, img_path)
+            export_to_latex(diameters_nm, report_path)
 
             # Export summary CSV (SINGLE MODE ONLY)
             if not self.batch_mode:
-                export_summary_csv(diameters_nm, df, img_path)
+                export_summary_csv(diameters_nm, df, report_path)
 
             # Print morphology summary
             if len(df) > 0 and "Morphology" in df.columns:
@@ -689,6 +845,10 @@ class NanoparticleAnalyzer:
             # Catch and log any errors during processing
             # This prevents one bad image from crashing batch mode
             logging.exception(f"Error while processing {img_path}: {e}")
+        finally:
+            # Always clean up the interactive-ROI cache file, even on error
+            if cached_crop_path is not None:
+                delete_cache_file(cached_crop_path)
 
     def _generate_batch_report(self, batch_start_time) -> None:
         """
@@ -808,13 +968,15 @@ class NanoparticleAnalyzer:
             2,
         )
 
-        cv2.imshow("Verify Scale Bar", crop)
+        window_name = "Verify Scale Bar"
+        cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+        cv2.imshow(window_name, crop)
         print("\n" + "=" * 60)
-        print("CLICK IMAGE WINDOW then press Y or N")
+        print("CLICK IMAGE WINDOW then press: Y or y to Accept; N or n to Reject")
         print("=" * 60 + "\n")
 
         while True:
-            key = cv2.waitKey(0) & 0xFF
+            key = cv2.waitKey(500) & 0xFF
             if key == ord("y") or key == ord("Y"):
                 cv2.destroyAllWindows()
                 cv2.waitKey(1)
@@ -823,6 +985,125 @@ class NanoparticleAnalyzer:
                 cv2.destroyAllWindows()
                 cv2.waitKey(1)
                 return False
+            elif key == 255:
+                try:
+                    prop = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+                    if prop < 1:
+                        cv2.destroyAllWindows()
+                        cv2.waitKey(1)
+                        return False
+                except cv2.error:
+                    cv2.destroyAllWindows()
+                    cv2.waitKey(1)
+                    return False
+
+    def _composite_overlays_to_full_image(
+        self,
+        original_img_path: str,
+        stem: str,
+        crop_ext: str,
+        roi_x: int,
+        roi_y: int,
+    ) -> None:
+        """
+        Composite crop-sized overlays onto the full original image.
+
+        For each overlay produced by measure_particles (true_contours,
+        circular_equivalent, elliptical_equivalent, all_contour_types,
+        true_circular, morphology_overlay), this method:
+          1. Reads the crop-sized overlay file from outputs/figures/
+          2. Creates a full-image canvas from the original
+          3. Pastes the crop overlay at (roi_x, roi_y)
+          4. Draws a visible rectangle around the ROI
+          5. Overwrites the overlay file with the full-image version
+
+        Only runs when --interactive-roi is active. Overlays are saved
+        with .png extension (lossless) to avoid JPEG artifacts on the
+        drawn contours.
+
+        Parameters
+        ----------
+        original_img_path : str
+            Path to the original uncropped image.
+        stem : str
+            Filename stem used for overlays (e.g. "sample_image_1").
+        crop_ext : str
+            Extension used by the crop-sized overlays (e.g. ".png").
+        roi_x, roi_y : int
+            Top-left corner of the ROI in original-image coordinates.
+        """
+        import cv2
+
+        full_gray = cv2.imread(original_img_path, cv2.IMREAD_GRAYSCALE)
+        if full_gray is None:
+            logging.warning(
+                f"Could not read original for overlay compositing: "
+                f"{original_img_path}"
+            )
+            return
+        full_bgr_base = cv2.cvtColor(full_gray, cv2.COLOR_GRAY2BGR)
+        full_h, full_w = full_gray.shape[:2]
+
+        # Yellow rectangle, thickness scaled to image size (min 3 px)
+        rect_color = (0, 255, 255)
+        rect_thickness = max(3, min(full_h, full_w) // 500)
+
+        overlay_suffixes = [
+            "true_contours",
+            "circular_equivalent",
+            "elliptical_equivalent",
+            "all_contour_types",
+            "true_circular",
+            "morphology_overlay",
+        ]
+
+        for suffix in overlay_suffixes:
+            crop_overlay_path = f"outputs/figures/{stem}_{suffix}{crop_ext}"
+            if not os.path.exists(crop_overlay_path):
+                continue
+
+            crop_overlay = cv2.imread(crop_overlay_path, cv2.IMREAD_COLOR)
+            if crop_overlay is None:
+                logging.warning(f"Could not read overlay: {crop_overlay_path}")
+                continue
+
+            ch, cw = crop_overlay.shape[:2]
+
+            # Clamp paste region to canvas bounds (defensive — should
+            # never be needed since ROI was clamped on selection, but
+            # guards against any off-by-one from downstream processing).
+            paste_w = min(cw, full_w - roi_x)
+            paste_h = min(ch, full_h - roi_y)
+            if paste_w <= 0 or paste_h <= 0:
+                logging.warning(
+                    f"Skipping overlay composite for {suffix}: "
+                    f"ROI out of bounds (roi=({roi_x},{roi_y}), "
+                    f"crop={cw}x{ch}, full={full_w}x{full_h})"
+                )
+                continue
+
+            canvas = full_bgr_base.copy()
+            canvas[roi_y:roi_y + paste_h, roi_x:roi_x + paste_w] = (
+                crop_overlay[:paste_h, :paste_w]
+            )
+
+            # Draw ROI rectangle
+            cv2.rectangle(
+                canvas,
+                (roi_x, roi_y),
+                (roi_x + paste_w, roi_y + paste_h),
+                rect_color,
+                rect_thickness,
+            )
+
+            # Overwrite the file. Keep the same extension used by the
+            # crop-sized version (which is .png from our PNG cache).
+            cv2.imwrite(crop_overlay_path, canvas)
+
+        logging.info(
+            f"Composited ROI overlays onto full image "
+            f"(ROI rect at ({roi_x},{roi_y}))"
+        )
 
     @staticmethod
     def _compute_nm_per_pixel(scale_bar_nm: float, scale_bar_px: float) -> float:

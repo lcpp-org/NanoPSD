@@ -19,10 +19,12 @@
 # Import OpenCV for image processing functions
 import cv2
 import os
+import numpy as np
 
 
 def preprocess_image(
-    image_path, save_steps=False, output_dir="outputs/preprocessing_steps", bright_particles=False
+    image_path, save_steps=False, output_dir="outputs/preprocessing_steps",
+    bright_particles=False, norm_min=None, norm_max=None, otsu_threshold=None,
 ):
     """
     Preprocesses a microscopy image by enhancing contrast, smoothing, and thresholding.
@@ -35,6 +37,21 @@ def preprocess_image(
         If True, save intermediate preprocessing steps for visualization.
     output_dir : str, optional (default="outputs/preprocessing_steps")
         Directory to save intermediate images.
+    bright_particles : bool, optional (default=False)
+        If True, skip inversion (use for bright particles on dark backgrounds).
+    norm_min, norm_max : int or None, optional (default=None)
+        When both are provided, they override the automatic per-image
+        min/max used by cv2.normalize(NORM_MINMAX). Use this when
+        preprocessing a cropped region of a larger image to keep the
+        normalization consistent with the full original (prevents noise
+        amplification when extreme-intensity regions like the scale bar
+        were cropped out). When either is None, behavior is unchanged.
+    otsu_threshold : float or None, optional (default=None)
+        When provided, use this as a fixed binary threshold instead of
+        running Otsu on the image. Use this to apply a threshold computed
+        from the full original image to a cropped region, so both use the
+        same intensity cutoff. When None, Otsu runs normally on the
+        input image's own histogram (existing behavior).
 
     Returns:
     --------
@@ -57,7 +74,20 @@ def preprocess_image(
         print(f"Saved: {output_dir}/{base_name}_step1_original.png")
 
     # Step 2: Normalize to 8-bit intensity range (0-255)
-    normalized = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
+    # When anchor values are provided (by interactive-ROI mode), use them so
+    # the crop is stretched using the ORIGINAL image's intensity range. This
+    # avoids amplifying noise when the crop's own min/max is narrower than
+    # the full image's.
+    if norm_min is not None and norm_max is not None and norm_max > norm_min:
+        # Linear stretch using the external anchor, clipped to [0, 255]
+        normalized = np.clip(
+            (image.astype(np.float32) - float(norm_min))
+            * 255.0 / float(norm_max - norm_min),
+            0, 255,
+        ).astype(np.uint8)
+    else:
+        # Original behavior: per-image min/max stretch
+        normalized = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
 
     if save_steps:
         cv2.imwrite(f"{output_dir}/{base_name}_step2_normalized.png", normalized)
@@ -78,8 +108,17 @@ def preprocess_image(
         cv2.imwrite(f"{output_dir}/{base_name}_step4_gaussian_blur.png", blurred)
         print(f"Saved: {output_dir}/{base_name}_step4_gaussian_blur.png")
 
-    # Step 5: Apply Otsu's thresholding to binarize the image
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Step 5: Binarize. Either use a provided threshold (from the full
+    # original image — interactive-ROI mode) or let Otsu pick one from the
+    # current image's histogram (default behavior).
+    if otsu_threshold is not None:
+        _, binary = cv2.threshold(
+            blurred, float(otsu_threshold), 255, cv2.THRESH_BINARY
+        )
+    else:
+        _, binary = cv2.threshold(
+            blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
 
     if save_steps:
         cv2.imwrite(f"{output_dir}/{base_name}_step5_otsu_threshold.png", binary)
@@ -95,3 +134,52 @@ def preprocess_image(
 
     # Return the binary image as a boolean array and the original normalized image
     return binary > 0, image
+
+def compute_full_image_otsu(image_path, norm_min=None, norm_max=None):
+    """
+    Run the same normalize → CLAHE → blur → Otsu sequence that
+    preprocess_image uses, but only to extract the Otsu threshold value.
+
+    Used by interactive-ROI mode to compute a threshold from the ORIGINAL
+    full image, which is then passed back into preprocess_image(crop) so
+    the crop uses the same intensity cutoff as the full image would have.
+
+    Parameters
+    ----------
+    image_path : str
+        Path to the original full image.
+    norm_min, norm_max : int or None
+        Optional anchor values for normalization. Should typically match
+        whatever crop_to_cache computed (the full image's min/max), but
+        since this IS the full image, passing them in doesn't change
+        anything — per-image min/max would be identical. Kept for
+        symmetry with preprocess_image's signature.
+
+    Returns
+    -------
+    float or None
+        Otsu threshold value in [0, 255]. Returns None if the image
+        cannot be read.
+    """
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        return None
+
+    # Mirror preprocess_image's steps 2-4 exactly
+    if norm_min is not None and norm_max is not None and norm_max > norm_min:
+        normalized = np.clip(
+            (image.astype(np.float32) - float(norm_min))
+            * 255.0 / float(norm_max - norm_min),
+            0, 255,
+        ).astype(np.uint8)
+    else:
+        normalized = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(normalized)
+    blurred = cv2.GaussianBlur(enhanced, (3, 3), 0)
+
+    thresh_val, _ = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    return float(thresh_val)
